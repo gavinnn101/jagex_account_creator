@@ -137,7 +137,7 @@ class AccountCreator:
 
         # custom user-agent is only needed for headless but why not make it consistent.
         co.set_user_agent(
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36"
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36"
         )
 
         if self.headless:
@@ -207,7 +207,9 @@ class AccountCreator:
         element = self.find_element(tab, identifier, teardown)
         if element:
             logger.debug(f"Clicking element and then typing: {text}")
-            tab.actions.move_to(element).click().type(text)
+            # Jagex will block us if we type everything instantly
+            key_press_interval = 0.01
+            tab.actions.move_to(element).click().type(text, interval=key_press_interval)
         return element
 
     def teardown(self, tab: MixTab, exit_status: str) -> None:
@@ -228,6 +230,7 @@ class AccountCreator:
             f"sleeping {checkbox_wait_seconds} seconds before getting CF checkbox"
         )
         time.sleep(checkbox_wait_seconds)
+        logger.info("Looking for CF checkbox.")
         eles = tab.eles("tag:input")
         for ele in eles:
             if "name" in ele.attrs.keys() and "type" in ele.attrs.keys():
@@ -251,7 +254,7 @@ class AccountCreator:
             if button:
                 logger.debug("Found CF challenge button. Clicking.")
                 button.click()
-                return tab.wait.title_change("Create a Jagex account", timeout=15)
+                return tab.wait.url_change("Just a moment", exclude=True)
 
             logger.warning(
                 f"Couldn't find CF challenge button. Retrying in {sleep_seconds} seconds."
@@ -471,8 +474,13 @@ class AccountCreator:
             logger.debug("Going to management page")
             if not tab.get(self.management_url):
                 self.teardown(tab, "Failed to get to the account management page.")
-            tab.wait.url_change(self.management_url)
             tab.wait.doc_loaded()
+
+            # DrissionPage used to automatically pass this cloudflare check but not atm.
+            # For now, we'll always check for a challenge here and solve if needed.
+            self.bypass_challenge(tab)
+
+            tab.wait.url_change(self.management_url)
 
             self.click_element(tab, "@data-testid:mfa-enable-totp-button")
 
