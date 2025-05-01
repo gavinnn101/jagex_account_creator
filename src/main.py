@@ -218,10 +218,6 @@ class AccountCreator:
         tab.close()
         sys.exit(exit_status)
 
-    def check_for_challenge(self, tab: MixTab) -> bool:
-        """Checks if we got a CF challenge on the page."""
-        return tab.wait.ele_displayed("#challenge-form", timeout=5)
-
     def locate_cf_button(self, tab: MixTab) -> ChromiumElement:
         """Finds the CF challenge button in the tab. Credit to CloudflareBypasser."""
         button = None
@@ -254,7 +250,7 @@ class AccountCreator:
             if button:
                 logger.debug("Found CF challenge button. Clicking.")
                 button.click()
-                return tab.wait.url_change("Just a moment", exclude=True)
+                return tab.wait.title_change("Just a moment", exclude=True)
 
             logger.warning(
                 f"Couldn't find CF challenge button. Retrying in {sleep_seconds} seconds."
