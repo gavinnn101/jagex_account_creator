@@ -53,5 +53,13 @@ email = catchAll@mydomain.com
 > Account creator signs into catchAll@mydomain.com via imap and waits for an email addressed to abcd123@myotherdomain.net.
 ```
 
+To achieve this functionality I would:
+* Self host [docker-mailserver](https://github.com/docker-mailserver/docker-mailserver)
+* Purchase email hosting from [mxroute](https://mxroute.com/)
+* * (Not afilliated, don't add me for support.)
+* Pay for [EternalFarm](https://eternalpayments.selly.store/category/12bd08e1) because they host an account creator for you.
+* * (Not afilliated, don't add me for support.)
+* Replace functionality with browsing to a temp email service instead. (will use more bandwidth, be slower, etc.)
+
 # Contact
 My only discord is `gavinnn` (uid: `132269908628078592`)
