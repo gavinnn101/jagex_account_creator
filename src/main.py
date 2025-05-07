@@ -474,7 +474,7 @@ class AccountCreator:
 
             # DrissionPage used to automatically pass this cloudflare check but not atm.
             # For now, we'll always check for a challenge here and solve if needed.
-            self.bypass_challenge(tab)
+            # self.bypass_challenge(tab)
 
             tab.wait.url_change(self.management_url)
 
