@@ -249,7 +249,7 @@ class AccountCreator:
             button = self.locate_cf_button(tab)
             if button:
                 logger.debug("Found CF challenge button. Clicking.")
-                button.click()
+                tab.actions.move_to(button).click()
                 return tab.wait.title_change("Just a moment", exclude=True)
 
             logger.warning(
