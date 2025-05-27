@@ -30,23 +30,25 @@ def create_proxy_extension(
     manifest_json = """
     {
         "version": "1.0.0",
-        "manifest_version": 2,
-        "name": "p",
+        "manifest_version": 3,
+        "name": "proxy",
         "permissions": [
             "proxy",
             "tabs",
             "unlimitedStorage",
             "storage",
-            "<all_urls>",
             "webRequest",
-            "webRequestBlocking"
+            "webRequestAuthProvider"
+        ],
+        "host_permissions": [
+            "<all_urls>"
         ],
         "background": {
-            "scripts": ["background.js"]
+            "service_worker": "background.js"
         },
-        "minimum_chrome_version":"22.0.0"
-    }
-    """
+        "minimum_chrome_version":"88.0.0"
+}
+"""
 
     # Base proxy configuration JavaScript
     proxy_config_js = string.Template("""
