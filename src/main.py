@@ -9,8 +9,10 @@ import sys
 import threading
 import time
 from pathlib import Path
+from zipfile import ZipFile
 
 import pyotp
+import requests
 from DrissionPage import Chromium, ChromiumOptions
 from DrissionPage.common import Settings
 from DrissionPage.items import ChromiumElement, MixTab
@@ -83,6 +85,8 @@ class AccountCreator:
             "beacon",
         ]
 
+        self.browser_path = SCRIPT_DIR / "brave-v1.81.43-win32-x64"
+
         Settings.set_language("en")
 
     def get_dir_size(self, directory: Path) -> int:
@@ -114,12 +118,47 @@ class AccountCreator:
                 shutil.copytree(self.cache_folder, new_cache_folder)
         co.set_argument(f"--disk-cache-dir={new_cache_folder}")
 
+    def get_browser_binary(self) -> None:
+        """Downloads the expected Brave browser binary to use with DrissionPage.
+        This is required because Chrome 137 disasbled loading local extensions via cli flag.
+        """
+        download_url = "https://github.com/brave/brave-browser/releases/download/v1.81.43/brave-v1.81.43-win32-x64.zip"
+        download_path = self.browser_path.with_suffix(".zip")
+
+        if self.browser_path.exists():
+            return
+
+        try:
+            response = requests.get(url=download_url, stream=True)
+            response.raise_for_status()
+
+            with open(download_path, "wb") as file:
+                for chunk in response.iter_content(chunk_size=8192):
+                    file.write(chunk)
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error downloading browser zip: {e}")
+            sys.exit(1)
+        else:
+            logger.info("Downloaded browser binary")
+            logger.info(
+                f"Unzipping download from {download_path} to {self.browser_path}"
+            )
+            with ZipFile(download_path) as zObject:
+                zObject.extractall(path=self.browser_path)
+        finally:
+            if download_path.exists():
+                logger.debug("Deleting browser zip")
+                download_path.unlink()
+
     def get_new_browser(
         self, run_path: Path, proxy_extension_path: Path = None
     ) -> Chromium:
         """Creates a new browser tab with temp settings and an open port."""
         co = ChromiumOptions()
         co.auto_port()
+        self.get_browser_binary()
+        browser_path = self.browser_path / "brave.exe"
+        co.set_paths(browser_path=browser_path)
 
         co.mute()
         # co.no_imgs()  # no_imgs() seems to cause cloudflare challenge to infinite loop
@@ -137,7 +176,7 @@ class AccountCreator:
 
         # custom user-agent is only needed for headless but why not make it consistent.
         co.set_user_agent(
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36"
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36"
         )
 
         if self.headless:
@@ -401,9 +440,6 @@ class AccountCreator:
         # tab.set.blocked_urls = self.urls_to_block
         tab.run_cdp("Network.enable")
         tab.run_cdp("Network.setBlockedURLs", urls=self.urls_to_block)
-
-        # wait a second before starting otherwise our proxy might not be loaded yet..
-        time.sleep(2)
 
         browser_ip = self.get_browser_ip(tab)
         logger.info(f"Browser IP: {browser_ip}")
