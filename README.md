@@ -26,8 +26,7 @@ Utilizes the Python DrissionPage library to automate a Chrome browser and sign u
 
 * Download the repository - https://github.com/gavinnn101/jagex_account_creator/archive/refs/heads/main.zip
 * * Unzip the download to the location of your choice.
-* Open a terminal in the root folder of your download.
-* run `pip install -r .\requirements.txt` to install the script dependencies.
+* Setup `uv` if not already - https://docs.astral.sh/uv/getting-started/installation/
 * Open `$script_root\src\config.ini` and edit the settings accordingly.
 * * You'll need to edit:
 * * * `account.domains`
@@ -35,7 +34,9 @@ Utilizes the Python DrissionPage library to automate a Chrome browser and sign u
 * * * `imap.ip`
 * * * `imap.email`
 * * * `imap.password`
-* Back in your terminal, run `python .\src\main.py`
+* Back in your terminal:
+* * Run `cd src`.
+* * Run `uv run main.py`.
 
 ### IMAP / Domains Explanation
 Your `imap.email` should have a catch-all alias pointing to it for all domains listed under `account.domains`
