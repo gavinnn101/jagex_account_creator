@@ -34,7 +34,7 @@ Utilizes the Python DrissionPage library to automate a Chrome browser and sign u
 * * * `imap.ip`
 * * * `imap.email`
 * * * `imap.password`
-* Back in your terminal:
+* Open a terminal in the root folder of your download:
 * * Run `cd src`.
 * * Run `uv run main.py`.
 
