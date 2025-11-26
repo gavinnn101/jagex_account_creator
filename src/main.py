@@ -64,8 +64,8 @@ class AccountCreator:
 
         self.urls_to_block = [
             ".ico",
-            ".jpg",
-            ".png",
+            # ".jpg",
+            # ".png",
             ".gif",
             ".svg",
             ".webp",
@@ -85,7 +85,7 @@ class AccountCreator:
             "beacon",
         ]
 
-        self.browser_path = SCRIPT_DIR / "brave-v1.81.43-win32-x64"
+        self.browser_path = SCRIPT_DIR / "brave-v1.84.141-win32-x64"
 
         Settings.set_language("en")
 
@@ -122,7 +122,7 @@ class AccountCreator:
         """Downloads the expected Brave browser binary to use with DrissionPage.
         This is required because Chrome 137 disasbled loading local extensions via cli flag.
         """
-        download_url = "https://github.com/brave/brave-browser/releases/download/v1.81.43/brave-v1.81.43-win32-x64.zip"
+        download_url = "https://github.com/brave/brave-browser/releases/download/v1.84.141/brave-v1.84.141-win32-x64.zip"
         download_path = self.browser_path.with_suffix(".zip")
 
         if self.browser_path.exists():
@@ -176,7 +176,7 @@ class AccountCreator:
 
         # custom user-agent is only needed for headless but why not make it consistent.
         co.set_user_agent(
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36"
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
         )
 
         if self.headless:
@@ -246,9 +246,10 @@ class AccountCreator:
         element = self.find_element(tab, identifier, teardown)
         if element:
             logger.debug(f"Clicking element and then typing: {text}")
-            # Jagex will block us if we type everything instantly
-            key_press_interval = 0.01
-            tab.actions.move_to(element).click().type(text, interval=key_press_interval)
+            tab.actions.move_to(element).click()
+            for char in text:
+                time.sleep(random.uniform(0.100, 0.350))
+                tab.actions.type(char)
         return element
 
     def teardown(self, tab: MixTab, exit_status: str) -> None:
@@ -257,9 +258,8 @@ class AccountCreator:
         tab.close()
         sys.exit(exit_status)
 
-    def locate_cf_button(self, tab: MixTab) -> ChromiumElement:
+    def locate_cf_button(self, tab: MixTab) -> ChromiumElement | None:
         """Finds the CF challenge button in the tab. Credit to CloudflareBypasser."""
-        button = None
         checkbox_wait_seconds = 5
         logger.info(
             f"sleeping {checkbox_wait_seconds} seconds before getting CF checkbox"
@@ -275,7 +275,7 @@ class AccountCreator:
                         .shadow_root.child()("tag:body")
                         .shadow_root("tag:input")
                     )
-        return button
+        return None
 
     def bypass_challenge(self, tab: MixTab) -> bool:
         """Attempts to bypass the CF challenge by clicking the checkbox."""
@@ -467,17 +467,17 @@ class AccountCreator:
         self.click_and_type(
             tab,
             "@id:registration-start-form--field-day",
-            registration_info["birthday"]["day"],
+            str(registration_info["birthday"]["day"]),
         )
         self.click_and_type(
             tab,
             "@id:registration-start-form--field-month",
-            registration_info["birthday"]["month"],
+            str(registration_info["birthday"]["month"]),
         )
         self.click_and_type(
             tab,
             "@id:registration-start-form--field-year",
-            registration_info["birthday"]["year"],
+            str(registration_info["birthday"]["year"]),
         )
         self.click_element(tab, "@id:registration-start-accept-agreements")
         self.click_element(tab, "@id:registration-start-form--continue-button")
@@ -503,6 +503,7 @@ class AccountCreator:
             self.teardown(tab, "Failed to verify account creation.")
 
         if self.set_2fa:
+            time.sleep(random.randint(3, 10))
             logger.debug("Going to management page")
             if not tab.get(self.management_url):
                 self.teardown(tab, "Failed to get to the account management page.")

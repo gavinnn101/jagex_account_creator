@@ -1,4 +1,0 @@
-DrissionPage
-loguru
-pyotp
-imap-tools
