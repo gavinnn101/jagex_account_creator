@@ -9,17 +9,14 @@ import sys
 import threading
 import time
 from pathlib import Path
-from zipfile import ZipFile
 
 import pyotp
-import requests
 from DrissionPage import Chromium, ChromiumOptions
 from DrissionPage.common import Settings
 from DrissionPage.items import ChromiumElement, MixTab
 from imap_tools import AND, MailBox
 from loguru import logger
 
-from proxies.proxy_extension import create_proxy_extension
 from traffic_filter_proxy_server import TrafficFilterProxy
 
 SCRIPT_DIR = Path(os.path.dirname(os.path.realpath(__file__)))
@@ -52,7 +49,7 @@ class AccountCreator:
 
         self.use_proxies = self.config.getboolean("proxies", "enabled")
         if self.use_proxies:
-            self.proxies = self.load_proxies(SCRIPT_DIR / "proxies" / "proxies.txt")
+            self.proxies = self.load_proxies(SCRIPT_DIR / "proxies.txt")
             self.proxy_index = random.randint(0, len(self.proxies) - 1)
             self.proxies_lock = threading.Lock()
 
@@ -85,8 +82,6 @@ class AccountCreator:
             "beacon",
         ]
 
-        self.browser_path = SCRIPT_DIR / "brave-v1.84.141-win32-x64"
-
         Settings.set_language("en")
 
     def get_dir_size(self, directory: Path) -> int:
@@ -118,47 +113,10 @@ class AccountCreator:
                 shutil.copytree(self.cache_folder, new_cache_folder)
         co.set_argument(f"--disk-cache-dir={new_cache_folder}")
 
-    def get_browser_binary(self) -> None:
-        """Downloads the expected Brave browser binary to use with DrissionPage.
-        This is required because Chrome 137 disasbled loading local extensions via cli flag.
-        """
-        download_url = "https://github.com/brave/brave-browser/releases/download/v1.84.141/brave-v1.84.141-win32-x64.zip"
-        download_path = self.browser_path.with_suffix(".zip")
-
-        if self.browser_path.exists():
-            return
-
-        try:
-            response = requests.get(url=download_url, stream=True)
-            response.raise_for_status()
-
-            with open(download_path, "wb") as file:
-                for chunk in response.iter_content(chunk_size=8192):
-                    file.write(chunk)
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Error downloading browser zip: {e}")
-            sys.exit(1)
-        else:
-            logger.info("Downloaded browser binary")
-            logger.info(
-                f"Unzipping download from {download_path} to {self.browser_path}"
-            )
-            with ZipFile(download_path) as zObject:
-                zObject.extractall(path=self.browser_path)
-        finally:
-            if download_path.exists():
-                logger.debug("Deleting browser zip")
-                download_path.unlink()
-
-    def get_new_browser(
-        self, run_path: Path, proxy_extension_path: Path = None
-    ) -> Chromium:
+    def get_new_browser(self, run_path: Path, ip: str, port: int) -> Chromium:
         """Creates a new browser tab with temp settings and an open port."""
         co = ChromiumOptions()
         co.auto_port()
-        self.get_browser_binary()
-        browser_path = self.browser_path / "brave.exe"
-        co.set_paths(browser_path=browser_path)
 
         co.mute()
         # co.no_imgs()  # no_imgs() seems to cause cloudflare challenge to infinite loop
@@ -184,9 +142,7 @@ class AccountCreator:
         elif self.config.getboolean("default", "enable_dev_tools"):
             co.set_argument("--auto-open-devtools-for-tabs")
 
-        if proxy_extension_path:
-            logger.debug(f"Using proxy extension path: {proxy_extension_path}")
-            co.add_extension(path=proxy_extension_path)
+        co.set_proxy(f"http://{ip}:{port}")
 
         browser = Chromium(addr_or_opts=co)
         return browser
@@ -378,62 +334,44 @@ class AccountCreator:
 
         run_number = random.randint(10_000, 65_535)
 
-        # Create tmp dir for this run
         run_path = SCRIPT_DIR / f"run_{run_number}"
         os.mkdir(run_path)
 
         if self.use_proxies:
-            proxy_extension_dir = run_path / "proxy_extension"
             proxy = self.get_next_proxy()
             logger.debug(f"Returning browser with proxy: {proxy}")
 
-            # Parse proxy string
             proxy_parts = proxy.split(":")
-
-            # Validate proxy format
             if len(proxy_parts) not in [2, 4]:
                 logger.error(
                     f"Proxy ({proxy}) doesn't split into ip:port or ip:port:user:pass"
                 )
                 sys.exit("Invalid proxy")
 
-            # Extract proxy details
-            proxy_host, proxy_port = proxy_parts[0], proxy_parts[1]
-
-            # Set auth if provided
             if len(proxy_parts) == 4:
                 proxy_username, proxy_password = proxy_parts[2], proxy_parts[3]
-
-                # Store in registration info
                 registration_info["proxy"].update(
                     {"username": proxy_username, "password": proxy_password}
                 )
 
-            # Update registration info with host and port (always needed)
+            proxy_host, proxy_port = proxy_parts[0], proxy_parts[1]
             registration_info["proxy"].update({"host": proxy_host, "port": proxy_port})
 
-            # Start proxy server to intercept requests
-            filter_proxy = TrafficFilterProxy(
-                allowed_url_patterns=[
-                    "jagex",
-                    "cloudflare",
-                    "ipify",
-                ],
-                upstream_proxy=registration_info["proxy"],
-            )
-            filter_proxy.start_daemon()
-
-            # Create proxy extension
-            proxy_extension_path = create_proxy_extension(
-                proxy_host=filter_proxy.ip,
-                proxy_port=filter_proxy.port,
-                plugin_path=proxy_extension_dir,
-            )
-
-            browser = self.get_new_browser(run_path, proxy_extension_path)
+            upstream_proxy = registration_info["proxy"]
         else:
-            browser = self.get_new_browser(run_path)
+            upstream_proxy = None
 
+        filter_proxy = TrafficFilterProxy(
+            allowed_url_patterns=[
+                "jagex",
+                "cloudflare",
+                "ipify",
+            ],
+            upstream_proxy=upstream_proxy,
+        )
+        filter_proxy.start_daemon()
+
+        browser = self.get_new_browser(run_path, filter_proxy.ip, filter_proxy.port)
         tab = browser.latest_tab
         tab.set.auto_handle_alert()
 
