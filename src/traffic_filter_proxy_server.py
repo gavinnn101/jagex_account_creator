@@ -67,9 +67,7 @@ class TrafficFilterProxy:
             return host, port
 
         # If not absolute URL, fall back to the Host header
-        host_header = next(
-            (line for line in lines if line.lower().startswith("host:")), None
-        )
+        host_header = next((line for line in lines if line.lower().startswith("host:")), None)
         if host_header:
             host_string = host_header.split(":", 1)[1].strip()
             if ":" in host_string:
@@ -112,7 +110,7 @@ class TrafficFilterProxy:
             if self.allowed_url_patterns and not any(
                 pat in host for pat in self.allowed_url_patterns
             ):
-                self.send_blocked_response(client_socket, host, port, is_https)
+                client_socket.close()
                 return
 
             destination_socket = socket.create_connection(
@@ -133,9 +131,7 @@ class TrafficFilterProxy:
             if is_https:
                 if self.upstream_proxy:
                     connect_request = (
-                        f"CONNECT {host}:{port} HTTP/1.1\r\n"
-                        f"Host: {host}:{port}\r\n"
-                        f"{proxy_auth}\r\n"
+                        f"CONNECT {host}:{port} HTTP/1.1\r\nHost: {host}:{port}\r\n{proxy_auth}\r\n"
                     ).encode()
                     destination_socket.sendall(connect_request)
                     proxy_response = self.get_request_data(destination_socket)
@@ -151,11 +147,7 @@ class TrafficFilterProxy:
                     if not path.startswith(("http://", "https://")):
                         path = f"http://{host}:{port}{path}"
                     req_line = f"{method} {path} {version}\r\n".encode()
-                    request_data = (
-                        req_line
-                        + (proxy_auth.encode() if proxy_auth else b"")
-                        + headers
-                    )
+                    request_data = req_line + (proxy_auth.encode() if proxy_auth else b"") + headers
                 destination_socket.sendall(request_data)
                 client_socket.sendall(self.get_request_data(destination_socket))
         except Exception as e:
@@ -165,9 +157,7 @@ class TrafficFilterProxy:
             if destination_socket:
                 destination_socket.close()
 
-    def tunnel_data(
-        self, client_socket: socket.socket, destination_socket: socket.socket
-    ) -> None:
+    def tunnel_data(self, client_socket: socket.socket, destination_socket: socket.socket) -> None:
         """Tunnel data between two sockets efficiently."""
         client_socket.setblocking(False)
         destination_socket.setblocking(False)
@@ -189,42 +179,13 @@ class TrafficFilterProxy:
                         return
 
                     dst_socket = (
-                        destination_socket
-                        if src_socket is client_socket
-                        else client_socket
+                        destination_socket if src_socket is client_socket else client_socket
                     )
                     dst_socket.sendall(data)
 
                 except Exception as e:
                     logger.error(f"Tunnel error: {e}")
                     return
-
-    def send_blocked_response(
-        self, client_socket: socket.socket, host: str, port: int, is_https: bool
-    ) -> None:
-        """Send a custom blocked response to the client with request metadata."""
-        if is_https:
-            response = b"HTTP/1.1 403 Blocked By Pattern Matcher\r\n\r\n"
-        else:
-            response = (
-                b"HTTP/1.1 403 Blocked By Pattern Matcher\r\n"
-                b"Content-Type: text/html\r\n"
-                b"Connection: close\r\n"
-                b"\r\n"
-                b"<html><body style='font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px;'>"
-                b"<h1 style='color: #e74c3c;'>403 Blocked By Pattern Matcher</h1>"
-                b"<div style='background-color: #f8f9fa; border-left: 4px solid #e74c3c; padding: 15px;'>"
-                b"<p>The requested URL was blocked by the Traffic Filter Proxy's pattern matcher.</p>"
-                b"</div>"
-                b"</body></html>"
-            )
-        try:
-            client_socket.sendall(response)
-            logger.info(f"Sent blocked response for {host}:{port}")
-        except Exception as e:
-            logger.error(f"Error sending blocked response: {e}")
-        finally:
-            client_socket.close()
 
     def start(self) -> None:
         """Monitors the local proxy server for requests and sends them to get handled in a separate thread."""

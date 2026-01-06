@@ -26,9 +26,7 @@ class AccountCreator:
     def __init__(self) -> None:
         self.config = configparser.ConfigParser()
         self.config.read(SCRIPT_DIR / "config.ini")
-        self.registration_url = (
-            "https://account.jagex.com/en-GB/login/registration-start"
-        )
+        self.registration_url = "https://account.jagex.com/en-GB/login/registration-start"
         self.management_url = "https://account.jagex.com/en-GB/manage/profile"
         self.accounts_file = SCRIPT_DIR / "accounts.json"
         self.imap_details = {
@@ -43,9 +41,7 @@ class AccountCreator:
 
         self.threads = self.config.getint("default", "threads")
         self.headless = self.config.getboolean("default", "headless")
-        self.element_wait_timeout = self.config.getint(
-            "default", "element_wait_timeout"
-        )
+        self.element_wait_timeout = self.config.getint("default", "element_wait_timeout")
 
         self.use_proxies = self.config.getboolean("proxies", "enabled")
         if self.use_proxies:
@@ -55,9 +51,7 @@ class AccountCreator:
 
         self.cache_folder = SCRIPT_DIR / "cache"
         self.cache_folder_lock = threading.Lock()
-        self.cache_update_threshold = self.config.getfloat(
-            "default", "cache_update_threshold"
-        )
+        self.cache_update_threshold = self.config.getfloat("default", "cache_update_threshold")
 
         self.urls_to_block = [
             ".ico",
@@ -134,7 +128,7 @@ class AccountCreator:
 
         # custom user-agent is only needed for headless but why not make it consistent.
         co.set_user_agent(
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"
         )
 
         if self.headless:
@@ -156,9 +150,7 @@ class AccountCreator:
         else:
             self.teardown(tab, "Couldn't get browser ip!")
 
-    def find_element(
-        self, tab: MixTab, identifier: str, teardown: bool = True
-    ) -> ChromiumElement:
+    def find_element(self, tab: MixTab, identifier: str, teardown: bool = True) -> ChromiumElement:
         """Tries to find an element in the tab."""
         logger.debug(f"Looking for element to click with identifier: {identifier}")
 
@@ -186,9 +178,7 @@ class AccountCreator:
         logger.debug("Returning element")
         return element
 
-    def click_element(
-        self, tab: MixTab, identifier: str, teardown: bool = True
-    ) -> ChromiumElement:
+    def click_element(self, tab: MixTab, identifier: str, teardown: bool = True) -> ChromiumElement:
         element = self.find_element(tab, identifier, teardown)
         if element:
             logger.debug("Clicking element")
@@ -202,10 +192,8 @@ class AccountCreator:
         element = self.find_element(tab, identifier, teardown)
         if element:
             logger.debug(f"Clicking element and then typing: {text}")
-            tab.actions.move_to(element).click()
-            for char in text:
-                time.sleep(random.uniform(0.100, 0.350))
-                tab.actions.type(char)
+            key_press_interval = 0.01
+            tab.actions.move_to(element).click().type(text, interval=key_press_interval)
         return element
 
     def teardown(self, tab: MixTab, exit_status: str) -> None:
@@ -217,20 +205,14 @@ class AccountCreator:
     def locate_cf_button(self, tab: MixTab) -> ChromiumElement | None:
         """Finds the CF challenge button in the tab. Credit to CloudflareBypasser."""
         checkbox_wait_seconds = 5
-        logger.info(
-            f"sleeping {checkbox_wait_seconds} seconds before getting CF checkbox"
-        )
+        logger.info(f"sleeping {checkbox_wait_seconds} seconds before getting CF checkbox")
         time.sleep(checkbox_wait_seconds)
         logger.info("Looking for CF checkbox.")
         eles = tab.eles("tag:input")
         for ele in eles:
             if "name" in ele.attrs.keys() and "type" in ele.attrs.keys():
                 if "turnstile" in ele.attrs["name"] and ele.attrs["type"] == "hidden":
-                    return (
-                        ele.parent()
-                        .shadow_root.child()("tag:body")
-                        .shadow_root("tag:input")
-                    )
+                    return ele.parent().shadow_root.child()("tag:body").shadow_root("tag:input")
         return None
 
     def bypass_challenge(self, tab: MixTab) -> bool:
@@ -271,9 +253,7 @@ class AccountCreator:
     def _get_verification_code(self, tab: MixTab, account_email: str) -> str:
         """Gets the verification code from catch all email via imap"""
         email_query = AND(to=account_email, seen=False)
-        code_regex = (
-            r'data-testid="registration-started-verification-code"[^>]*>([A-Z0-9]+)<'
-        )
+        code_regex = r'data-testid="registration-started-verification-code"[^>]*>([A-Z0-9]+)<'
         with MailBox(self.imap_details["ip"], self.imap_details["port"]).login(
             self.imap_details["email"], self.imap_details["password"]
         ) as mailbox:
@@ -293,10 +273,7 @@ class AccountCreator:
     def _load_accounts(self) -> dict:
         """Loads accounts from file."""
         accounts = {}
-        if (
-            os.path.isfile(self.accounts_file)
-            and os.path.getsize(self.accounts_file) > 0
-        ):
+        if os.path.isfile(self.accounts_file) and os.path.getsize(self.accounts_file) > 0:
             with open(self.accounts_file, "r") as f:
                 accounts = json.load(f)
         return accounts
@@ -308,9 +285,7 @@ class AccountCreator:
 
     def _save_account_to_file(self, registration_info: dict) -> None:
         """Saves created account to accounts file."""
-        logger.info(
-            f"Saving registration info: {registration_info} to file: {self.accounts_file}"
-        )
+        logger.info(f"Saving registration info: {registration_info} to file: {self.accounts_file}")
         accounts = self._load_accounts()
         accounts[registration_info["email"]] = registration_info
         self._save_accounts(accounts)
@@ -343,9 +318,7 @@ class AccountCreator:
 
             proxy_parts = proxy.split(":")
             if len(proxy_parts) not in [2, 4]:
-                logger.error(
-                    f"Proxy ({proxy}) doesn't split into ip:port or ip:port:user:pass"
-                )
+                logger.error(f"Proxy ({proxy}) doesn't split into ip:port or ip:port:user:pass")
                 sys.exit("Invalid proxy")
 
             if len(proxy_parts) == 4:
@@ -441,7 +414,6 @@ class AccountCreator:
             self.teardown(tab, "Failed to verify account creation.")
 
         if self.set_2fa:
-            time.sleep(random.randint(3, 10))
             logger.debug("Going to management page")
             if not tab.get(self.management_url):
                 self.teardown(tab, "Failed to get to the account management page.")
@@ -458,13 +430,9 @@ class AccountCreator:
             self.click_element(tab, "@id:authentication-setup-show-secret")
 
             # Extract setup key after clicking the button to show it
-            setup_key_element = self.find_element(
-                tab, "@id:authentication-setup-secret-key"
-            )
+            setup_key_element = self.find_element(tab, "@id:authentication-setup-secret-key")
             registration_info["2fa"]["setup_key"] = setup_key_element.text
-            logger.debug(
-                f"Extracted 2fa setup key: {registration_info['2fa']['setup_key']}"
-            )
+            logger.debug(f"Extracted 2fa setup key: {registration_info['2fa']['setup_key']}")
 
             self.click_element(tab, "@data-testid:authenticator-setup-qr-button")
 
@@ -473,19 +441,11 @@ class AccountCreator:
             logger.debug(f"Generated TOTP code: {totp}")
 
             self.click_and_type(tab, "@id:authentication-setup-verification-code", totp)
-            self.click_element(
-                tab, "@data-testid:authentication-setup-qr-code-submit-button"
-            )
+            self.click_element(tab, "@data-testid:authentication-setup-qr-code-submit-button")
 
-            backup_codes_element = self.find_element(
-                tab, "@id:authentication-setup-complete-codes"
-            )
-            registration_info["2fa"]["backup_codes"] = backup_codes_element.text.split(
-                "\n"
-            )
-            logger.debug(
-                f"Got 2fa backup codes: {registration_info['2fa']['backup_codes']}"
-            )
+            backup_codes_element = self.find_element(tab, "@id:authentication-setup-complete-codes")
+            registration_info["2fa"]["backup_codes"] = backup_codes_element.text.split("\n")
+            logger.debug(f"Got 2fa backup codes: {registration_info['2fa']['backup_codes']}")
 
         self._save_account_to_file(registration_info)
 
@@ -503,18 +463,14 @@ class AccountCreator:
                     size_diff_percent = 100  # New cache exists but original was empty
             else:
                 size_diff_percent = (
-                    abs(run_cache_size - original_cache_size)
-                    / original_cache_size
-                    * 100
+                    abs(run_cache_size - original_cache_size) / original_cache_size * 100
                 )
             logger.debug(f"run cache size: {run_cache_size}")
             logger.debug(f"original cache size: {original_cache_size}")
             logger.debug(f"Size difference %: {size_diff_percent}")
             if size_diff_percent >= self.cache_update_threshold:
                 with self.cache_folder_lock:
-                    logger.debug(
-                        f"Updating cache file with run cache: {run_cache_path}"
-                    )
+                    logger.debug(f"Updating cache file with run cache: {run_cache_path}")
                     shutil.rmtree(self.cache_folder)
                     shutil.copytree(run_cache_path, self.cache_folder)
         else:
