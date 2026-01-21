@@ -20,6 +20,7 @@ from loguru import logger
 from traffic_filter_proxy_server import TrafficFilterProxy
 
 SCRIPT_DIR = Path(os.path.dirname(os.path.realpath(__file__)))
+LOG_LEVEL = "INFO"
 
 
 class AccountCreator:
@@ -128,7 +129,7 @@ class AccountCreator:
 
         # custom user-agent is only needed for headless but why not make it consistent.
         co.set_user_agent(
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36"
         )
 
         if self.headless:
@@ -488,6 +489,9 @@ class AccountCreator:
 
 
 def main():
+    logger.remove()
+    logger.add(sys.stderr, level=LOG_LEVEL)
+
     ac = AccountCreator()
 
     for _ in range(0, ac.threads):

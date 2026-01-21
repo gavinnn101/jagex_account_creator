@@ -82,7 +82,7 @@ class TrafficFilterProxy:
 
     def handle_client_request(self, client_socket: socket.socket) -> None:
         """Receives the client request and handles it appropriately."""
-        logger.info("Handling client request.")
+        logger.debug("Handling client request.")
         destination_socket = None
         try:
             first_chunk = client_socket.recv(4096)
@@ -105,7 +105,7 @@ class TrafficFilterProxy:
                 )
                 host, port = self.extract_host_port_from_request(request_data)
 
-            logger.info(f"Host: {host}, Port: {port}, HTTPS: {is_https}")
+            logger.debug(f"Host: {host}, Port: {port}, HTTPS: {is_https}")
 
             if self.allowed_url_patterns and not any(
                 pat in host for pat in self.allowed_url_patterns
@@ -138,7 +138,7 @@ class TrafficFilterProxy:
                     if b"200" not in proxy_response.split(b"\r\n")[0]:
                         raise Exception("Proxy CONNECT failed")
                 client_socket.sendall(b"HTTP/1.1 200 Connection Established\r\n\r\n")
-                logger.info(f"Tunnel established for {host}:{port}")
+                logger.debug(f"Tunnel established for {host}:{port}")
                 self.tunnel_data(client_socket, destination_socket)
             else:
                 if self.upstream_proxy:
@@ -198,7 +198,7 @@ class TrafficFilterProxy:
                 client_socket, addr = self.server.accept()
             except socket.timeout:
                 continue
-            logger.info(f"Got request from: {addr}")
+            logger.debug(f"Got request from: {addr}")
             client_handler = threading.Thread(
                 target=self.handle_client_request, args=(client_socket,)
             )
