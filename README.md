@@ -10,7 +10,7 @@ Utilizes the Python DrissionPage library to automate a Chrome browser and sign u
 * * Sets up a local proxy server that intercepts all of the Chrome traffic and blocks requests that aren't required.
 * * Elements that can't be blocked are saved to a cache that is shared by all runs and frequently updated.
 * Utilizes a catch-all email via imap for easy and quick account verification.
-* Supports enabling OTP 2FA on accounts.
+* Supports enabling TOTP 2FA on created accounts.
 * Each successful account creation appends the account and all of the registration info used to `accounts.json`.
 
 ## Notable not-features
