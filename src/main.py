@@ -21,10 +21,11 @@ from traffic_filter_proxy_server import TrafficFilterProxy
 
 SCRIPT_DIR = Path(os.path.dirname(os.path.realpath(__file__)))
 LOG_LEVEL = "INFO"
+USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36"
 
 
 class AccountCreator:
-    def __init__(self) -> None:
+    def __init__(self, user_agent: str) -> None:
         self.config = configparser.ConfigParser()
         self.config.read(SCRIPT_DIR / "config.ini")
         self.registration_url = "https://account.jagex.com/en-GB/login/registration-start"
@@ -53,6 +54,8 @@ class AccountCreator:
         self.cache_folder = SCRIPT_DIR / "cache"
         self.cache_folder_lock = threading.Lock()
         self.cache_update_threshold = self.config.getfloat("default", "cache_update_threshold")
+
+        self.user_agent = user_agent
 
         self.urls_to_block = [
             ".ico",
@@ -127,13 +130,15 @@ class AccountCreator:
 
         co.set_timeouts(self.element_wait_timeout)
 
-        # custom user-agent is only needed for headless but why not make it consistent.
-        co.set_user_agent(
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36"
-        )
+        if self.user_agent:
+            co.set_user_agent(self.user_agent)
 
         if self.headless:
             co.set_argument("--headless=new")
+            if not self.user_agent:
+                logger.warning(
+                    "Using headless without setting a user agent. This will likely get your session detected."
+                )
         elif self.config.getboolean("default", "enable_dev_tools"):
             co.set_argument("--auto-open-devtools-for-tabs")
 
@@ -492,7 +497,7 @@ def main():
     logger.remove()
     logger.add(sys.stderr, level=LOG_LEVEL)
 
-    ac = AccountCreator()
+    ac = AccountCreator(user_agent=USER_AGENT)
 
     for _ in range(0, ac.threads):
         threading.Thread(target=ac.register_account).start()
