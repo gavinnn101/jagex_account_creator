@@ -29,7 +29,7 @@ Utilizes the Python DrissionPage library to automate a Chrome browser and sign u
 * Download the repository - https://github.com/gavinnn101/jagex_account_creator/archive/refs/heads/main.zip
 * * Unzip the download to the location of your choice.
 * Setup `uv` if not already - https://docs.astral.sh/uv/getting-started/installation/
-* Open `$script_root\src\config.ini` and edit the settings accordingly.
+* Open `$script_root\src\config.toml` and edit the settings accordingly.
 * * You'll need to edit:
 * * * `account.domains`
 * * * `account.password`
