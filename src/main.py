@@ -1,4 +1,3 @@
-import configparser
 import json
 import os
 import random
@@ -8,6 +7,7 @@ import string
 import sys
 import threading
 import time
+import tomllib
 from pathlib import Path
 
 import pyotp
@@ -26,34 +26,34 @@ USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTM
 
 class AccountCreator:
     def __init__(self, user_agent: str) -> None:
-        self.config = configparser.ConfigParser()
-        self.config.read(SCRIPT_DIR / "config.ini")
+        with open(SCRIPT_DIR / "config.toml", "rb") as f:
+            self.config = tomllib.load(f)
         self.registration_url = "https://account.jagex.com/en-GB/login/registration-start"
         self.management_url = "https://account.jagex.com/en-GB/manage/profile"
         self.accounts_file = SCRIPT_DIR / "accounts.json"
         self.imap_details = {
-            "ip": self.config.get("imap", "ip"),
-            "port": self.config.getint("imap", "port"),
-            "email": self.config.get("imap", "email"),
-            "password": self.config.get("imap", "password"),
+            "ip": self.config["imap"]["ip"],
+            "port": self.config["imap"]["port"],
+            "email": self.config["imap"]["email"],
+            "password": self.config["imap"]["password"],
         }
-        self.domains = self.config.get("account", "domains").split(",")
-        self.password = self.config.get("account", "password")
-        self.set_2fa = self.config.getboolean("account", "set_2fa")
+        self.domains = self.config["account"]["domains"]
+        self.password = self.config["account"]["password"]
+        self.set_2fa = self.config["account"]["set_2fa"]
 
-        self.threads = self.config.getint("default", "threads")
-        self.headless = self.config.getboolean("default", "headless")
-        self.element_wait_timeout = self.config.getint("default", "element_wait_timeout")
+        self.threads = self.config["default"]["threads"]
+        self.headless = self.config["default"]["headless"]
+        self.element_wait_timeout = self.config["default"]["element_wait_timeout"]
 
-        self.use_proxies = self.config.getboolean("proxies", "enabled")
+        self.use_proxies = self.config["proxies"]["enabled"]
         if self.use_proxies:
-            self.proxies = self.load_proxies(SCRIPT_DIR / "proxies.txt")
+            self.proxies = self.config["proxies"]["proxy_list"]
             self.proxy_index = random.randint(0, len(self.proxies) - 1)
             self.proxies_lock = threading.Lock()
 
         self.cache_folder = SCRIPT_DIR / "cache"
         self.cache_folder_lock = threading.Lock()
-        self.cache_update_threshold = self.config.getfloat("default", "cache_update_threshold")
+        self.cache_update_threshold = self.config["default"]["cache_update_threshold"]
 
         self.user_agent = user_agent
 
@@ -139,7 +139,7 @@ class AccountCreator:
                 logger.warning(
                     "Using headless without setting a user agent. This will likely get your session detected."
                 )
-        elif self.config.getboolean("default", "enable_dev_tools"):
+        elif self.config["default"]["enable_dev_tools"]:
             co.set_argument("--auto-open-devtools-for-tabs")
 
         co.set_proxy(f"http://{ip}:{port}")
