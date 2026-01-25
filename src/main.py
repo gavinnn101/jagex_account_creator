@@ -458,29 +458,31 @@ class AccountCreator:
         browser.close_tabs(tab)
 
         run_cache_path = run_path / "cache"
-        if self.cache_folder.is_dir():
-            run_cache_size = self.get_dir_size(run_cache_path)
-            original_cache_size = self.get_dir_size(self.cache_folder)
-            if original_cache_size == 0:
-                if run_cache_size == 0:
-                    size_diff_percent = 0  # Both are zero, so no difference
-                else:
-                    size_diff_percent = 100  # New cache exists but original was empty
-            else:
-                size_diff_percent = (
-                    abs(run_cache_size - original_cache_size) / original_cache_size * 100
-                )
-            logger.debug(f"run cache size: {run_cache_size}")
-            logger.debug(f"original cache size: {original_cache_size}")
-            logger.debug(f"Size difference %: {size_diff_percent}")
-            if size_diff_percent >= self.cache_update_threshold:
-                with self.cache_folder_lock:
-                    logger.debug(f"Updating cache file with run cache: {run_cache_path}")
-                    shutil.rmtree(self.cache_folder)
-                    shutil.copytree(run_cache_path, self.cache_folder)
-        else:
-            logger.debug("primary cache doesn't exist. Copying run cache to primary.")
+
+        if not self.cache_folder.is_dir():
+            logger.debug("Primary cache doesn't exist. Copying run cache to primary.")
             shutil.copytree(run_cache_path, self.cache_folder)
+            return
+
+        run_cache_size = self.get_dir_size(run_cache_path)
+        original_cache_size = self.get_dir_size(self.cache_folder)
+
+        if original_cache_size == 0:
+            size_diff_percent = 100 if run_cache_size else 0
+        else:
+            size_diff_percent = (
+                abs(run_cache_size - original_cache_size) / original_cache_size * 100
+            )
+
+        logger.debug(f"Run cache size: {run_cache_size}")
+        logger.debug(f"Original cache size: {original_cache_size}")
+        logger.debug(f"Size difference %: {size_diff_percent}")
+
+        if size_diff_percent >= self.cache_update_threshold:
+            with self.cache_folder_lock:
+                logger.debug(f"Updating cache file with run cache: {run_cache_path}")
+                shutil.rmtree(self.cache_folder)
+                shutil.copytree(run_cache_path, self.cache_folder)
 
         logger.debug(f"Deleting run temp folder: {run_path}")
         shutil.rmtree(run_path)
