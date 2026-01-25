@@ -1,5 +1,4 @@
 import json
-import os
 import random
 import re
 import shutil
@@ -19,7 +18,7 @@ from loguru import logger
 
 from traffic_filter_proxy_server import TrafficFilterProxy
 
-SCRIPT_DIR = Path(os.path.dirname(os.path.realpath(__file__)))
+SCRIPT_DIR = Path(__file__).resolve().parent
 LOG_LEVEL = "INFO"
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36"
 
@@ -106,7 +105,7 @@ class AccountCreator:
         run_number = str(run_path).split("_")[-1]
         logger.info(f"Creating cache folder for run number: {run_number}")
         new_cache_folder = run_path / "cache"
-        if os.path.isdir(self.cache_folder):
+        if self.cache_folder.is_dir():
             with self.cache_folder_lock:
                 shutil.copytree(self.cache_folder, new_cache_folder)
         co.set_argument(f"--disk-cache-dir={new_cache_folder}")
@@ -279,7 +278,7 @@ class AccountCreator:
     def _load_accounts(self) -> dict:
         """Loads accounts from file."""
         accounts = {}
-        if os.path.isfile(self.accounts_file) and os.path.getsize(self.accounts_file) > 0:
+        if self.accounts_file.is_file() and self.accounts_file.stat().st_size > 0:
             with open(self.accounts_file, "r") as f:
                 accounts = json.load(f)
         return accounts
@@ -316,7 +315,7 @@ class AccountCreator:
         run_number = random.randint(10_000, 65_535)
 
         run_path = SCRIPT_DIR / f"run_{run_number}"
-        os.mkdir(run_path)
+        run_path.mkdir()
 
         if self.use_proxies:
             proxy = self.get_next_proxy()
@@ -459,7 +458,7 @@ class AccountCreator:
         browser.close_tabs(tab)
 
         run_cache_path = run_path / "cache"
-        if os.path.isdir(self.cache_folder):
+        if self.cache_folder.is_dir():
             run_cache_size = self.get_dir_size(run_cache_path)
             original_cache_size = self.get_dir_size(self.cache_folder)
             if original_cache_size == 0:
