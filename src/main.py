@@ -16,9 +16,11 @@ from DrissionPage.items import ChromiumElement, MixTab
 from imap_tools import AND, MailBox
 from loguru import logger
 
+from proxy import Proxy, parse_proxy
 from traffic_filter_proxy_server import TrafficFilterProxy
 
 SCRIPT_DIR = Path(__file__).resolve().parent
+
 LOG_LEVEL = "INFO"
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36"
 
@@ -46,7 +48,9 @@ class AccountCreator:
 
         self.use_proxies = self.config["proxies"]["enabled"]
         if self.use_proxies:
-            self.proxies = self.config["proxies"]["proxy_list"]
+            self.proxies: list[Proxy] = [
+                parse_proxy(p) for p in self.config["proxies"]["proxy_list"]
+            ]
             self.proxy_index = random.randint(0, len(self.proxies) - 1)
             self.proxies_lock = threading.Lock()
 
@@ -91,7 +95,7 @@ class AccountCreator:
             # Read each line from the file and strip newline characters
             return [line.strip() for line in file.readlines()]
 
-    def get_next_proxy(self) -> str:
+    def get_next_proxy(self) -> Proxy:
         """Gets the next proxy from the list, cycling back to the start if necessary."""
         with self.proxies_lock:
             # Get the proxy at the current index
@@ -320,22 +324,12 @@ class AccountCreator:
         if self.use_proxies:
             proxy = self.get_next_proxy()
             logger.debug(f"Returning browser with proxy: {proxy}")
-
-            proxy_parts = proxy.split(":")
-            if len(proxy_parts) not in [2, 4]:
-                logger.error(f"Proxy ({proxy}) doesn't split into ip:port or ip:port:user:pass")
-                sys.exit("Invalid proxy")
-
-            if len(proxy_parts) == 4:
-                proxy_username, proxy_password = proxy_parts[2], proxy_parts[3]
-                registration_info["proxy"].update(
-                    {"username": proxy_username, "password": proxy_password}
-                )
-
-            proxy_host, proxy_port = proxy_parts[0], proxy_parts[1]
-            registration_info["proxy"].update({"host": proxy_host, "port": proxy_port})
-
-            upstream_proxy = registration_info["proxy"]
+            registration_info["proxy"]["host"] = proxy.ip
+            registration_info["proxy"]["port"] = proxy.port
+            if proxy.username and proxy.password:
+                registration_info["proxy"]["username"] = proxy.username
+                registration_info["proxy"]["password"] = proxy.password
+            upstream_proxy = proxy
         else:
             upstream_proxy = None
 

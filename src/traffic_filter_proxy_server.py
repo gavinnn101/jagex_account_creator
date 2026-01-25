@@ -7,6 +7,8 @@ from urllib.parse import urlparse
 
 from loguru import logger
 
+from proxy import Proxy
+
 
 class TrafficFilterProxy:
     def __init__(
@@ -14,7 +16,7 @@ class TrafficFilterProxy:
         ip: str = "127.0.0.1",
         port: int = None,
         allowed_url_patterns: list[str] = None,
-        upstream_proxy: dict = None,
+        upstream_proxy: Proxy = None,
     ):
         self.ip = ip
         self.port = port or self._find_free_port()
@@ -30,7 +32,6 @@ class TrafficFilterProxy:
 
         self.allowed_url_patterns = allowed_url_patterns
 
-        # should be dict of host:str, port: int, username:optional[str], password:optional[str]
         self.upstream_proxy = upstream_proxy
 
         self.running = False
@@ -114,7 +115,7 @@ class TrafficFilterProxy:
                 return
 
             destination_socket = socket.create_connection(
-                (self.upstream_proxy["host"], self.upstream_proxy["port"])
+                (self.upstream_proxy.ip, self.upstream_proxy.port)
                 if self.upstream_proxy
                 else (host, port),
                 timeout=5,
@@ -122,8 +123,8 @@ class TrafficFilterProxy:
 
             proxy_auth = ""
             if self.upstream_proxy:
-                username = self.upstream_proxy.get("username")
-                password = self.upstream_proxy.get("password")
+                username = self.upstream_proxy.username
+                password = self.upstream_proxy.password
                 if username and password:
                     credentials = f"{username}:{password}"
                     proxy_auth = f"Proxy-Authorization: Basic {base64.b64encode(credentials.encode()).decode()}\r\n"
