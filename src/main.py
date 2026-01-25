@@ -89,18 +89,10 @@ class AccountCreator:
         """Return the size of a directory"""
         return sum(f.stat().st_size for f in directory.glob("**/*") if f.is_file())
 
-    def load_proxies(self, proxy_file_path: Path) -> list:
-        """Loads a list of proxies from a file."""
-        with open(proxy_file_path, "r") as file:
-            # Read each line from the file and strip newline characters
-            return [line.strip() for line in file.readlines()]
-
     def get_next_proxy(self) -> Proxy:
         """Gets the next proxy from the list, cycling back to the start if necessary."""
         with self.proxies_lock:
-            # Get the proxy at the current index
             proxy = self.proxies[self.proxy_index]
-            # Update the index to point to the next proxy
             self.proxy_index = (self.proxy_index + 1) % len(self.proxies)
         return proxy
 
@@ -425,17 +417,14 @@ class AccountCreator:
             tab.wait.url_change(self.management_url)
 
             self.click_element(tab, "@data-testid:mfa-enable-totp-button")
-
             self.click_element(tab, "@id:authentication-setup-show-secret")
 
-            # Extract setup key after clicking the button to show it
             setup_key_element = self.find_element(tab, "@id:authentication-setup-secret-key")
             registration_info["2fa"]["setup_key"] = setup_key_element.text
             logger.debug(f"Extracted 2fa setup key: {registration_info['2fa']['setup_key']}")
 
             self.click_element(tab, "@data-testid:authenticator-setup-qr-button")
 
-            # generate totp using the setup key here
             totp = pyotp.TOTP(registration_info["2fa"]["setup_key"]).now()
             logger.debug(f"Generated TOTP code: {totp}")
 
