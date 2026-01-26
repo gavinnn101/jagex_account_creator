@@ -43,11 +43,11 @@ Utilizes the Python DrissionPage library to automate a Chrome browser and sign u
 ### IMAP / Domains Explanation
 Your `imap.email` should have a catch-all alias pointing to it for all domains listed under `account.domains`
 ```
-[accounts]
-domains = mydomain1.com,myotherdomain.net
+[account]
+domains = ["mydomain1.com", "myotherdomain.net"]
 
 [imap]
-email = catchAll@mydomain.com
+email = "catchAll@mydomain.com"
 
 > Account creator tries to make abcd123@mydomain1.com
 > Account creator signs into catchAll@mydomain.com via imap and waits for an email addressed to abcd123@mydomain1.com.
