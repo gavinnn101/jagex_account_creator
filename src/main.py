@@ -8,7 +8,6 @@ import threading
 import time
 import tomllib
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
-from dataclasses import dataclass
 from pathlib import Path
 
 import pyotp
@@ -18,7 +17,7 @@ from DrissionPage.items import ChromiumElement, MixTab
 from imap_tools import AND, MailBox
 from loguru import logger
 
-from proxy import Proxy, parse_proxy
+from models import IMAPDetails, Proxy
 from traffic_filter_proxy_server import TrafficFilterProxy
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -26,14 +25,6 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 LOG_LEVEL = "INFO"
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36"
 ACCOUNTS_FILE_PATH = SCRIPT_DIR / "accounts.json"
-
-
-@dataclass(frozen=True)
-class IMAPDetails:
-    ip: str
-    port: int
-    email: str
-    password: str
 
 
 class AccountCreator:
@@ -501,7 +492,7 @@ def main():
     element_wait_timeout = config["default"]["element_wait_timeout"]
     cache_update_threshold = config["default"]["cache_update_threshold"]
 
-    proxies: list[Proxy] = [parse_proxy(p) for p in config["proxies"]["proxy_list"]]
+    proxies: list[Proxy] = [Proxy(**p) for p in config["proxies"]["list"]]
 
     with ThreadPoolExecutor(max_workers=config["default"]["threads"]) as executor:
         futures: list[Future] = []

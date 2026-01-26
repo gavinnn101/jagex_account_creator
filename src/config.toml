@@ -19,8 +19,7 @@ set_2fa = true
 
 [proxies]
 enabled = false
-proxy_list = [
-    # "ip:port:user:pass",
-    # "ip:port:user:pass",
-    # "ip:port:user:pass"
+list = [
+    # { ip = "my.ip.here", port = "port", username = "my_proxy_username", password = "my_proxy_password"},
+    # { ip = "my.ip.here", port = "port"},
 ]

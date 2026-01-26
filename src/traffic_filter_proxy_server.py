@@ -7,7 +7,7 @@ from urllib.parse import urlparse
 
 from loguru import logger
 
-from proxy import Proxy
+from models import Proxy
 
 
 class TrafficFilterProxy:
