@@ -8,5 +8,6 @@ dependencies = [
     "drissionpage>=4.1.1.2",
     "imap-tools>=1.11.0",
     "loguru>=0.7.3",
+    "pydantic>=2.12.5",
     "pyotp>=2.9.0",
 ]

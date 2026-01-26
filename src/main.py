@@ -17,7 +17,7 @@ from DrissionPage.items import ChromiumElement, MixTab
 from imap_tools import AND, MailBox
 from loguru import logger
 
-from models import IMAPDetails, Proxy
+import models
 from traffic_filter_proxy_server import TrafficFilterProxy
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -34,10 +34,10 @@ class AccountCreator:
         element_wait_timeout: int,
         cache_update_threshold: float,
         enable_dev_tools: bool,
-        imap_details: IMAPDetails,
+        imap_details: models.IMAPDetails,
         account_email: str,
         account_password: str,
-        proxy: Proxy | None = None,
+        proxy: models.Proxy | None = None,
         set_2fa: bool = False,
         use_headless_browser: bool = False,
     ) -> None:
@@ -253,34 +253,11 @@ class AccountCreator:
         """Checks to see if we landed on the registration completed page."""
         return tab.wait.title_change("Registration completed")
 
-    def register_account(self) -> None:
+    def register_account(self) -> models.JagexAccount:
         """Wrapper function to fully register a Jagex account."""
-        registration_info = {
-            "email": None,
-            "password": self.account_password,
-            "birthday": {"day": None, "month": None, "year": None},
-            "proxy": {
-                "enabled": False,
-                "real_ip": None,
-                "host": None,
-                "port": None,
-                "username": None,
-                "password": None,
-            },
-            "2fa": {"enabled": self.set_2fa, "setup_key": None, "backup_codes": None},
-        }
-
         run_number = random.randint(10_000, 65_535)
-
         run_path = SCRIPT_DIR / f"run_{run_number}"
         run_path.mkdir()
-
-        if self.proxy:
-            registration_info["proxy"]["enabled"] = True
-            registration_info["proxy"]["host"] = self.proxy.ip
-            registration_info["proxy"]["port"] = self.proxy.port
-            registration_info["proxy"]["username"] = self.proxy.username
-            registration_info["proxy"]["password"] = self.proxy.password
 
         filter_proxy = TrafficFilterProxy(
             allowed_url_patterns=[
@@ -302,7 +279,18 @@ class AccountCreator:
 
         browser_ip = self.get_browser_ip(tab)
         logger.info(f"Browser IP: {browser_ip}")
-        registration_info["proxy"]["real_ip"] = browser_ip
+
+        jagex_account = models.JagexAccount(
+            email=self.account_email,
+            password=self.account_password,
+            birthday=models.Birthday(
+                day=random.randint(1, 25),
+                month=random.randint(1, 12),
+                year=random.randint(1979, 2010),
+            ),
+            real_ip=browser_ip,
+            proxy=self.proxy,
+        )
 
         if not tab.get(self.registration_url):
             self.teardown(f"Failed to go to url: {self.registration_url}")
@@ -314,27 +302,21 @@ class AccountCreator:
 
         # self.click_element(tab, "#CybotCookiebotDialogBodyButtonDecline", False)
 
-        registration_info["email"] = self.account_email
-
-        registration_info["birthday"]["day"] = random.randint(1, 25)
-        registration_info["birthday"]["month"] = random.randint(1, 12)
-        registration_info["birthday"]["year"] = random.randint(1979, 2010)
-
-        self.click_and_type(tab, "@id:email", registration_info["email"])
+        self.click_and_type(tab, "@id:email", jagex_account.email)
         self.click_and_type(
             tab,
             "@id:registration-start-form--field-day",
-            str(registration_info["birthday"]["day"]),
+            str(jagex_account.birthday.day),
         )
         self.click_and_type(
             tab,
             "@id:registration-start-form--field-month",
-            str(registration_info["birthday"]["month"]),
+            str(jagex_account.birthday.month),
         )
         self.click_and_type(
             tab,
             "@id:registration-start-form--field-year",
-            str(registration_info["birthday"]["year"]),
+            str(jagex_account.birthday.year),
         )
         self.click_element(tab, "@id:registration-start-accept-agreements")
         self.click_element(tab, "@id:registration-start-form--continue-button")
@@ -375,20 +357,21 @@ class AccountCreator:
             self.click_element(tab, "@id:authentication-setup-show-secret")
 
             setup_key_element = self.find_element(tab, "@id:authentication-setup-secret-key")
-            registration_info["2fa"]["setup_key"] = setup_key_element.text
-            logger.debug(f"Extracted 2fa setup key: {registration_info['2fa']['setup_key']}")
+            setup_key = setup_key_element.text
+            logger.debug(f"Extracted 2fa setup key: {setup_key}")
 
             self.click_element(tab, "@data-testid:authenticator-setup-qr-button")
-
-            totp = pyotp.TOTP(registration_info["2fa"]["setup_key"]).now()
+            totp = pyotp.TOTP(setup_key).now()
             logger.debug(f"Generated TOTP code: {totp}")
 
             self.click_and_type(tab, "@id:authentication-setup-verification-code", totp)
             self.click_element(tab, "@data-testid:authentication-setup-qr-code-submit-button")
 
             backup_codes_element = self.find_element(tab, "@id:authentication-setup-complete-codes")
-            registration_info["2fa"]["backup_codes"] = backup_codes_element.text.split("\n")
-            logger.debug(f"Got 2fa backup codes: {registration_info['2fa']['backup_codes']}")
+            backup_codes = backup_codes_element.text.split("\n")
+            logger.debug(f"Got 2fa backup codes: {backup_codes}")
+
+            jagex_account.tfa = models.TwoFactorAuth(setup_key=setup_key, backup_codes=backup_codes)
 
         # Close browser before deleting run folder
         browser.close_tabs(tab)
@@ -426,7 +409,7 @@ class AccountCreator:
         filter_proxy.stop()
 
         logger.info("Registration finished")
-        return registration_info
+        return jagex_account
 
 
 def generate_username(length: int = 10) -> str:
@@ -443,26 +426,27 @@ def get_account_domain(domains: list[str]) -> str:
     return domains[index]
 
 
-def load_accounts(accounts_file_path: Path) -> dict:
+def load_accounts(accounts_file_path: Path) -> list[models.JagexAccount]:
     """Loads accounts from file."""
-    accounts = {}
     if accounts_file_path.is_file() and accounts_file_path.stat().st_size > 0:
         with open(accounts_file_path) as f:
-            accounts = json.load(f)
-    return accounts
+            raw = json.load(f)
+        return [models.JagexAccount.model_validate(data) for data in raw]
+    return []
 
 
-def save_accounts(accounts_file_path: Path, accounts: dict) -> None:
-    """Saves accounts dictionary to file."""
+def save_accounts(accounts_file_path: Path, accounts: list[models.JagexAccount]) -> None:
+    """Saves accounts list to file."""
+    raw = [account.model_dump() for account in accounts]
     with open(accounts_file_path, "w") as f:
-        json.dump(accounts, f, indent=4)
+        json.dump(raw, f, indent=4)
 
 
-def save_account_to_file(accounts_file_path: Path, registration_info: dict) -> None:
+def save_account_to_file(accounts_file_path: Path, account: models.JagexAccount) -> None:
     """Saves created account to accounts file."""
-    logger.debug(f"Saving registration info: {registration_info} to file: {accounts_file_path}")
+    logger.debug(f"Saving account: {account.email} to file: {accounts_file_path}")
     accounts = load_accounts(accounts_file_path=accounts_file_path)
-    accounts[registration_info["email"]] = registration_info
+    accounts.append(account)
     save_accounts(accounts_file_path=accounts_file_path, accounts=accounts)
 
 
@@ -475,7 +459,7 @@ def main():
     with open(SCRIPT_DIR / "config.toml", "rb") as f:
         config = tomllib.load(f)
 
-    imap_details = IMAPDetails(
+    imap_details = models.IMAPDetails(
         ip=config["imap"]["ip"],
         port=config["imap"]["port"],
         email=config["imap"]["email"],
@@ -492,7 +476,7 @@ def main():
     element_wait_timeout = config["default"]["element_wait_timeout"]
     cache_update_threshold = config["default"]["cache_update_threshold"]
 
-    proxies: list[Proxy] = [Proxy(**p) for p in config["proxies"]["list"]]
+    proxies: list[models.Proxy] = [models.Proxy(**p) for p in config["proxies"]["list"]]
 
     with ThreadPoolExecutor(max_workers=config["default"]["threads"]) as executor:
         futures: list[Future] = []
@@ -526,9 +510,7 @@ def main():
                     continue
 
                 logger.success(f"Account created: {result}")
-                save_account_to_file(
-                    accounts_file_path=ACCOUNTS_FILE_PATH, registration_info=result
-                )
+                save_account_to_file(accounts_file_path=ACCOUNTS_FILE_PATH, account=result)
             except Exception as e:
                 logger.error(f"Account creation failed: {e}")
 
