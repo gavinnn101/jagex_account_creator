@@ -27,7 +27,15 @@ USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTM
 ACCOUNTS_FILE_PATH = SCRIPT_DIR / "accounts.json"
 
 
+class ElementNotFoundError(Exception):
+    """Raised when a required element cannot be found."""
+
+    pass
+
+
 class AccountCreator:
+    _cache_folder_lock = threading.Lock()
+
     def __init__(
         self,
         user_agent: str,
@@ -59,7 +67,6 @@ class AccountCreator:
 
         self.cache_update_threshold = cache_update_threshold
         self.cache_folder = SCRIPT_DIR / "cache"
-        self.cache_folder_lock = threading.Lock()
 
         self.urls_to_block = [
             ".ico",
@@ -96,7 +103,7 @@ class AccountCreator:
         logger.info(f"Creating cache folder for run number: {run_number}")
         new_cache_folder = run_path / "cache"
         if self.cache_folder.is_dir():
-            with self.cache_folder_lock:
+            with self._cache_folder_lock:
                 shutil.copytree(self.cache_folder, new_cache_folder)
         co.set_argument(f"--disk-cache-dir={new_cache_folder}")
 
@@ -143,20 +150,25 @@ class AccountCreator:
             return None
         return tab.ele("tag:pre").text
 
-    def find_element(self, tab: MixTab, identifier: str) -> ChromiumElement | None:
+    def find_element(
+        self, tab: MixTab, identifier: str, required: bool = True
+    ) -> ChromiumElement | None:
         """Tries to find an element in the tab."""
         logger.debug(f"Looking for element to click with identifier: {identifier}")
 
         logger.debug("Waiting for element to be loaded")
-        found_element = tab.wait.eles_loaded(identifier)
-        if not found_element:
-            logger.warning(f"Couldn't find loaded element with identifier: {identifier}")
+        if not tab.wait.eles_loaded(identifier):
+            if required:
+                raise ElementNotFoundError(
+                    f"Couldn't find loaded element with identifier: {identifier}"
+                )
             return None
 
         logger.debug("Getting element")
         element = tab.ele(identifier)
         if not element:
-            logger.warning(f"Couldn't find element with identifier: {identifier}")
+            if required:
+                raise ElementNotFoundError(f"Couldn't find element with identifier: {identifier}")
             return None
 
         logger.debug("Waiting for element to be displayed")
@@ -165,61 +177,91 @@ class AccountCreator:
         logger.debug("Returning element")
         return element
 
-    def click_element(self, tab: MixTab, identifier: str) -> ChromiumElement | None:
-        element = self.find_element(tab, identifier)
+    def click_element(
+        self, tab: MixTab, identifier: str, required: bool = True
+    ) -> ChromiumElement | None:
+        element = self.find_element(tab, identifier, required=required)
         if not element:
             return None
         logger.debug("Clicking element")
         tab.actions.move_to(element).click()
         return element
 
-    def click_and_type(self, tab: MixTab, identifier: str, text: str) -> ChromiumElement | None:
+    def click_and_type(
+        self, tab: MixTab, identifier: str, text: str, required: bool = True
+    ) -> ChromiumElement | None:
         """Clicks on an element and then types the text."""
-        element = self.find_element(tab, identifier)
+        element = self.find_element(tab, identifier, required=required)
         if not element:
             return None
         logger.debug(f"Clicking element and then typing: {text}")
-        key_press_interval = 0.01
-        tab.actions.move_to(element).click().type(text, interval=key_press_interval)
+        tab.actions.move_to(element).click().type(text, interval=0.01)
         return element
 
     def locate_cf_button(self, tab: MixTab) -> ChromiumElement | None:
         """Finds the CF challenge button in the tab. Credit to CloudflareBypasser."""
-        checkbox_wait_seconds = 5
-        logger.info(f"sleeping {checkbox_wait_seconds} seconds before getting CF checkbox")
-        time.sleep(checkbox_wait_seconds)
         logger.info("Looking for CF checkbox.")
-        eles = tab.eles("tag:input")
-        for ele in eles:
-            if "name" in ele.attrs.keys() and "type" in ele.attrs.keys():
-                if "turnstile" in ele.attrs["name"] and ele.attrs["type"] == "hidden":
-                    return ele.parent().shadow_root.child()("tag:body").shadow_root("tag:input")
+
+        try:
+            for ele in tab.eles("tag:input", timeout=1):
+                attrs = ele.attrs
+                if not (attrs.get("type") == "hidden" and "turnstile" in attrs.get("name", "")):
+                    continue
+
+                logger.info(f"Found turnstile input: {attrs['name']}")
+
+                container = ele.parent()
+                shadow = container.shadow_root or container.child().shadow_root
+                if not shadow:
+                    logger.info("Couldn't access shadow root")
+                    continue
+
+                iframe = shadow.ele("tag:iframe")
+                if not iframe:
+                    logger.info("No iframe in shadow root")
+                    continue
+
+                frame = tab.get_frame(iframe)
+                if not frame:
+                    logger.info("Couldn't get frame context")
+                    continue
+
+                body = frame.ele("tag:body")
+                if body and body.shadow_root:
+                    if checkbox := body.shadow_root.ele("tag:input"):
+                        return checkbox
+        except Exception as e:
+            logger.debug(f"Error traversing CF structure: {e}")
+
         return None
 
     def bypass_challenge(self, tab: MixTab) -> bool:
         """Attempts to bypass the CF challenge by clicking the checkbox."""
+        max_retries = 5
         sleep_seconds = 2
-        max_retries = 2
-        retry_count = 0
 
-        # Poll for the CF challenge button, with a maximum retry count
-        while retry_count < max_retries:
+        for attempt in range(max_retries):
+            if "Just a moment" not in tab.title:
+                logger.info("Challenge already passed or not present.")
+                return True
+
             button = self.locate_cf_button(tab)
             if button:
-                logger.debug("Found CF challenge button. Clicking.")
-                tab.actions.move_to(button).click()
-                return tab.wait.title_change("Just a moment", exclude=True)
+                logger.info("Found CF challenge button. Clicking.")
+                try:
+                    button.click()
+                except Exception as e:
+                    logger.debug(f"Click failed: {e}")
+                    continue
+                return tab.wait.title_change("Just a moment", exclude=True, timeout=10)
 
-            logger.warning(
-                f"Couldn't find CF challenge button. Retrying in {sleep_seconds} seconds."
-            )
+            logger.info(f"Checkbox not found yet, attempt {attempt + 1}/{max_retries}")
             time.sleep(sleep_seconds)
-            retry_count += 1
 
-        logger.error("Max retries reached. Failed to find CF challenge button.")
+        logger.error("Max retries reached. Failed to bypass CF challenge.")
         return False
 
-    def _get_verification_code(self, tab: MixTab, account_email: str) -> str | None:
+    def _get_verification_code(self, account_email: str) -> str | None:
         """Gets the verification code from catch all email via imap"""
         email_query = AND(to=account_email, seen=False)
         code_regex = r'data-testid="registration-started-verification-code"[^>]*>([A-Z0-9]+)<'
@@ -239,16 +281,49 @@ class AccountCreator:
         """Checks to see if we landed on the registration completed page."""
         return tab.wait.title_change("Registration completed")
 
-    def register_account(self) -> models.JagexAccount | None:
-        """Wrapper function to fully register a Jagex account."""
-        run_number = random.randint(10_000, 65_535)
-        run_path = SCRIPT_DIR / f"run_{run_number}"
-        run_path.mkdir()
+    def _update_cache(self, run_cache_path: Path) -> None:
+        """Update primary cache if run cache is significantly different."""
+        with self._cache_folder_lock:
+            if not self.cache_folder.is_dir():
+                logger.debug("Primary cache doesn't exist. Copying run cache.")
+                shutil.copytree(run_cache_path, self.cache_folder)
+                return
 
-        gproxy = GProxy(upstream_proxy=self.proxy, allowed_hosts=["jagex", "cloudflare", "ipify"])
-        gproxy.start()
+            run_size = self.get_dir_size(run_cache_path)
+            original_size = self.get_dir_size(self.cache_folder)
 
-        browser = self.get_new_browser(run_path, gproxy.ip, gproxy.port)
+            if original_size == 0:
+                size_diff_percent = 100.0 if run_size else 0.0
+            else:
+                size_diff_percent = abs(run_size - original_size) / original_size * 100
+
+            logger.debug(
+                f"Cache sizes - run: {run_size}, original: {original_size}, diff: {size_diff_percent:.1f}%"
+            )
+
+            if size_diff_percent >= self.cache_update_threshold:
+                logger.debug("Updating primary cache.")
+                shutil.rmtree(self.cache_folder)
+                shutil.copytree(run_cache_path, self.cache_folder)
+
+    def _cleanup(
+        self,
+        run_path: Path,
+        browser: Chromium,
+        gproxy: GProxy,
+        update_primary_cache: bool = False,
+    ) -> None:
+        """Cleanup browser, proxy, and temp files."""
+        browser.quit()
+        gproxy.stop()
+
+        if update_primary_cache:
+            self._update_cache(run_path / "cache")
+
+        shutil.rmtree(run_path, ignore_errors=True)
+
+    def _handle_registration(self, browser: Chromium) -> models.JagexAccount | None:
+        """Do the account registration flow."""
         tab = browser.latest_tab
         tab.set.auto_handle_alert()
 
@@ -259,7 +334,6 @@ class AccountCreator:
         browser_ip = self.get_browser_ip(tab)
         if not browser_ip:
             logger.error("Failed to get browser ip. Exiting.")
-            tab.close()
             return None
         logger.info(f"Browser IP: {browser_ip}")
 
@@ -277,7 +351,6 @@ class AccountCreator:
 
         if not tab.get(self.registration_url):
             logger.error(f"Failed to go to url: {self.registration_url}")
-            tab.close()
             return None
 
         tab.wait.title_change("Create a Jagex account")
@@ -285,7 +358,6 @@ class AccountCreator:
 
         if "Sorry, you have been blocked" in tab.html:
             logger.error("IP is blocked by CF. Exiting.")
-            tab.close()
             return None
 
         # self.click_element(tab, "#CybotCookiebotDialogBodyButtonDecline", False)
@@ -310,10 +382,9 @@ class AccountCreator:
         self.click_element(tab, "@id:registration-start-form--continue-button")
         tab.wait.doc_loaded()
 
-        code = self._get_verification_code(tab, self.account_username)
+        code = self._get_verification_code(self.account_username)
         if not code:
             logger.error("Failed to get registration verification code.")
-            tab.close()
             return None
         self.click_and_type(tab, "@id:registration-verify-form-code-input", code)
         self.click_element(tab, "@id:registration-verify-form-continue-button")
@@ -330,20 +401,18 @@ class AccountCreator:
 
         if not self._verify_account_creation(tab):
             logger.error("Failed to verify account creation.")
-            tab.close()
             return None
 
         if self.set_2fa:
             logger.debug("Going to management page")
             if not tab.get(self.management_url):
                 logger.error("Failed to get to the account management page.")
-                tab.close()
                 return None
             tab.wait.doc_loaded()
 
-            # DrissionPage used to automatically pass this cloudflare check but not atm.
-            # For now, we'll always check for a challenge here and solve if needed.
-            # self.bypass_challenge(tab)
+            while "Just a moment" not in tab.title:
+                time.sleep(0.1)
+            self.bypass_challenge(tab)
 
             tab.wait.url_change(self.management_url)
 
@@ -367,43 +436,32 @@ class AccountCreator:
 
             jagex_account.tfa = models.TwoFactorAuth(setup_key=setup_key, backup_codes=backup_codes)
 
-        # Close browser before deleting run folder
-        browser.close_tabs(tab)
-
-        run_cache_path = run_path / "cache"
-
-        if not self.cache_folder.is_dir():
-            logger.debug("Primary cache doesn't exist. Copying run cache to primary.")
-            shutil.copytree(run_cache_path, self.cache_folder)
-
-        run_cache_size = self.get_dir_size(run_cache_path)
-        original_cache_size = self.get_dir_size(self.cache_folder)
-
-        if original_cache_size == 0:
-            size_diff_percent = 100 if run_cache_size else 0
-        else:
-            size_diff_percent = (
-                abs(run_cache_size - original_cache_size) / original_cache_size * 100
-            )
-
-        logger.debug(f"Run cache size: {run_cache_size}")
-        logger.debug(f"Original cache size: {original_cache_size}")
-        logger.debug(f"Size difference %: {size_diff_percent}")
-
-        if size_diff_percent >= self.cache_update_threshold:
-            with self.cache_folder_lock:
-                logger.debug(f"Updating cache file with run cache: {run_cache_path}")
-                shutil.rmtree(self.cache_folder)
-                shutil.copytree(run_cache_path, self.cache_folder)
-
-        logger.debug(f"Deleting run temp folder: {run_path}")
-        shutil.rmtree(run_path)
-
-        logger.debug("Stopping proxy server.")
-        gproxy.stop()
-
         logger.info("Registration finished")
         return jagex_account
+
+    def register_account(self) -> models.JagexAccount | None:
+        """Wrapper function to fully register a Jagex account."""
+        run_number = random.randint(10_000, 65_535)
+        run_path = SCRIPT_DIR / f"run_{run_number}"
+        run_path.mkdir()
+
+        gproxy = GProxy(upstream_proxy=self.proxy, allowed_hosts=["jagex", "cloudflare", "ipify"])
+        gproxy.start()
+
+        browser = self.get_new_browser(run_path, gproxy.ip, gproxy.port)
+
+        success = False
+        try:
+            result = self._handle_registration(browser=browser)
+            success = result is not None
+            return result
+        except ElementNotFoundError as e:
+            logger.error(f"Registration failed: {e}")
+            return None
+        finally:
+            self._cleanup(
+                run_path=run_path, browser=browser, gproxy=gproxy, update_primary_cache=success
+            )
 
 
 def generate_username(length: int = 10) -> str:
