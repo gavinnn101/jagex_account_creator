@@ -39,7 +39,6 @@ class HttpRequest:
         return self.method == "CONNECT"
 
     def with_header(self, header: Header) -> "HttpRequest":
-        """Return a new request with an additional header."""
         return HttpRequest(
             method=self.method,
             request_target=self.request_target,
@@ -79,6 +78,7 @@ class GProxy:
         "allowed_hosts",
         "buffer_size",
         "tunnel_timeout",
+        "read_timeout",
         "_address",
         "_server_socket",
         "_executor",
@@ -92,7 +92,8 @@ class GProxy:
         upstream_proxy: models.Proxy | None = None,
         allowed_hosts: list[str] | None = None,
         buffer_size: int = 65_536,
-        tunnel_timeout: int = 30,
+        tunnel_timeout: int = 120,
+        read_timeout: int = 30,
         max_threads: int = 100,
     ) -> None:
         self.ip = ip
@@ -106,6 +107,7 @@ class GProxy:
         self.allowed_hosts = allowed_hosts
         self.buffer_size = buffer_size
         self.tunnel_timeout = tunnel_timeout
+        self.read_timeout = read_timeout
 
         self._executor = ThreadPoolExecutor(max_workers=max_threads)
         self._stopped = threading.Event()
@@ -137,45 +139,68 @@ class GProxy:
         encoded = base64.b64encode(credentials.encode()).decode()
         return Header(name="Proxy-Authorization", value=f"Basic {encoded}")
 
-    @staticmethod
-    def _read_headers(reader: BinaryIO) -> tuple[Header, ...]:
+    def _read_until_delimiter(self, sock: socket.socket) -> bytes:
+        """Read from socket until we hit the end-of-headers delimiter."""
+        data = b""
+        end_marker = END_OF_HEADER_DELIMITER * 2
+
+        while end_marker not in data:
+            chunk = sock.recv(self.buffer_size)
+            if not chunk:
+                raise ConnectionError("Connection closed while reading headers")
+            data += chunk
+
+        return data
+
+    def _parse_request(self, raw_data: bytes) -> tuple[HttpRequest, bytes]:
+        """Parse request and return any trailing body data."""
+        end_marker = END_OF_HEADER_DELIMITER * 2
+        header_end = raw_data.index(end_marker)
+        header_section = raw_data[:header_end]
+        body_remainder = raw_data[header_end + len(end_marker) :]
+
+        lines = header_section.split(END_OF_HEADER_DELIMITER)
+        request_line = lines[0].decode()
+        method, request_target, http_version = request_line.split()
+
         headers: list[Header] = []
-        while line := reader.readline().rstrip(END_OF_HEADER_DELIMITER):
-            name, value = line.decode().split(": ", 1)
-            headers.append(Header(name=name, value=value))
-        return tuple(headers)
+        for line in lines[1:]:
+            if line:
+                name, value = line.decode().split(": ", 1)
+                headers.append(Header(name=name, value=value))
 
-    def _read_request(self, reader: BinaryIO) -> HttpRequest:
-        logger.debug("Reading request from socket.")
-
-        line = reader.readline().rstrip(END_OF_HEADER_DELIMITER)
-        method, request_target, http_version = line.decode().split()
-
-        return HttpRequest(
+        request = HttpRequest(
             method=method,
             request_target=request_target,
             http_version=http_version,
-            headers=self._read_headers(reader),
+            headers=tuple(headers),
         )
+        return request, body_remainder
 
-    def _read_response(self, reader: BinaryIO) -> HttpResponse:
-        logger.debug("Reading response from socket.")
+    def _parse_response(self, raw_data: bytes) -> HttpResponse:
+        """Parse response from raw header data."""
+        end_marker = END_OF_HEADER_DELIMITER * 2
+        header_end = raw_data.index(end_marker)
+        header_section = raw_data[:header_end]
 
-        line = reader.readline().rstrip(END_OF_HEADER_DELIMITER)
-        data_string = line.decode()
-        logger.debug(f"Response status line: {data_string}")
-
-        # Handle responses with or without reason phrase
-        parts = data_string.split(maxsplit=2)
+        lines = header_section.split(END_OF_HEADER_DELIMITER)
+        status_line = lines[0].decode()
+        parts = status_line.split(maxsplit=2)
         http_version = parts[0]
         status_code = int(parts[1])
         status_reason = parts[2] if len(parts) > 2 else ""
+
+        headers: list[Header] = []
+        for line in lines[1:]:
+            if line:
+                name, value = line.decode().split(": ", 1)
+                headers.append(Header(name=name, value=value))
 
         return HttpResponse(
             http_version=http_version,
             status_code=status_code,
             status_reason=status_reason,
-            headers=self._read_headers(reader),
+            headers=tuple(headers),
         )
 
     def _establish_proxy_tunnel(
@@ -197,14 +222,23 @@ class GProxy:
         logger.debug(f"Sending request header: {bytes(request)}")
         destination_socket.sendall(bytes(request))
 
-        with destination_socket.makefile("rb") as reader:
-            response = self._read_response(reader=reader)
+        raw_response = self._read_until_delimiter(destination_socket)
+        response = self._parse_response(raw_response)
 
         logger.debug(f"Got response: {response}")
         return response.is_success
 
-    def _tunnel_data(self, client_socket: socket.socket, destination_socket: socket.socket) -> None:
+    def _tunnel_data(
+        self,
+        client_socket: socket.socket,
+        destination_socket: socket.socket,
+        initial_client_data: bytes = b"",
+    ) -> None:
+        """Tunnel data bidirectionally between sockets."""
         logger.debug("Tunneling data between sockets.")
+
+        if initial_client_data:
+            destination_socket.sendall(initial_client_data)
 
         client_socket.setblocking(False)
         destination_socket.setblocking(False)
@@ -218,19 +252,26 @@ class GProxy:
             sel.close()
 
     def _run_tunnel_loop(self, sel: selectors.DefaultSelector) -> None:
-        while events := sel.select(timeout=self.tunnel_timeout):
+        while True:
+            events = sel.select(timeout=self.tunnel_timeout)
+
+            if not events:
+                logger.debug("Tunnel idle timeout reached")
+                return
+
             for key, _ in events:
                 src_socket: socket.socket = key.fileobj
                 dst_socket: socket.socket = key.data
 
-                data = src_socket.recv(self.buffer_size)
-                if not data:
-                    return
-
-                dst_socket.sendall(data)
+                try:
+                    data = src_socket.recv(self.buffer_size)
+                    if not data:
+                        return
+                    dst_socket.sendall(data)
+                except (BlockingIOError, InterruptedError):
+                    continue
 
     def _parse_destination(self, request: HttpRequest) -> tuple[str, int]:
-        """Extract host and port from the request."""
         if request.is_https:
             host, port_str = request.request_target.split(":")
             return host, int(port_str)
@@ -240,10 +281,12 @@ class GProxy:
 
     def _handle_request(self, client_socket: socket.socket) -> None:
         logger.debug(f"Handling socket: {client_socket}")
-        client_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
 
-        with client_socket.makefile("rb") as reader:
-            request = self._read_request(reader=reader)
+        client_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        client_socket.settimeout(self.read_timeout)
+
+        raw_data = self._read_until_delimiter(client_socket)
+        request, body_remainder = self._parse_request(raw_data)
         logger.debug(f"Got request: {request}")
 
         host, port = self._parse_destination(request)
@@ -257,18 +300,21 @@ class GProxy:
             return
 
         try:
-            self._process_connection(client_socket, destination_socket, request, host, port)
+            self._process_connection(
+                client_socket, destination_socket, request, host, port, body_remainder
+            )
         finally:
             destination_socket.close()
 
     def _connect_to_destination(self, host: str, port: int) -> socket.socket | None:
-        """Create connection to destination (direct or via upstream proxy)."""
         address = (
             (self.upstream_proxy.ip, self.upstream_proxy.port)
             if self.upstream_proxy
             else (host, port)
         )
-        return socket.create_connection(address=address, timeout=self.tunnel_timeout)
+        sock = socket.create_connection(address=address, timeout=self.read_timeout)
+        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        return sock
 
     def _process_connection(
         self,
@@ -277,15 +323,15 @@ class GProxy:
         request: HttpRequest,
         host: str,
         port: int,
+        body_remainder: bytes = b"",
     ) -> None:
-        """Process the connection based on request type (HTTPS tunnel or HTTP forward)."""
         if request.is_https:
             if not self._handle_https_connection(client_socket, destination_socket, host, port):
                 return
+            self._tunnel_data(client_socket, destination_socket, body_remainder)
         else:
-            self._handle_http_connection(destination_socket, request)
-
-        self._tunnel_data(client_socket, destination_socket)
+            self._handle_http_connection(destination_socket, request, body_remainder)
+            self._tunnel_data(client_socket, destination_socket)
 
     def _handle_https_connection(
         self,
@@ -294,7 +340,6 @@ class GProxy:
         host: str,
         port: int,
     ) -> bool:
-        """Handle HTTPS CONNECT request. Returns True if tunnel established successfully."""
         if self.upstream_proxy:
             if not self._establish_proxy_tunnel(destination_socket, host, port):
                 logger.error("Failed to establish proxy tunnel!")
@@ -310,18 +355,24 @@ class GProxy:
         return True
 
     def _handle_http_connection(
-        self, destination_socket: socket.socket, request: HttpRequest
+        self,
+        destination_socket: socket.socket,
+        request: HttpRequest,
+        body_remainder: bytes = b"",
     ) -> None:
-        """Forward HTTP request, adding proxy auth header if needed."""
+        """Forward HTTP request with headers and any buffered body data."""
         if self.upstream_proxy_auth_header:
             request = request.with_header(self.upstream_proxy_auth_header)
-        destination_socket.sendall(bytes(request))
+
+        destination_socket.sendall(bytes(request) + body_remainder)
 
     def _safe_handle_request(self, client_socket: socket.socket) -> None:
         try:
             self._handle_request(client_socket)
         except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError, OSError):
             pass
+        except TimeoutError:
+            logger.debug("Socket read timeout")
         except Exception as e:
             if not self._stopped.is_set():
                 logger.debug(f"Request handler error: {e}")
