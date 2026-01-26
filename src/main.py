@@ -21,9 +21,6 @@ import models
 from gproxy import GProxy
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-
-LOG_LEVEL = "INFO"
-USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36"
 ACCOUNTS_FILE_PATH = SCRIPT_DIR / "accounts.json"
 
 
@@ -503,13 +500,13 @@ def save_account_to_file(accounts_file_path: Path, account: models.JagexAccount)
 
 
 def main():
-    logger.remove()
-    logger.add(sys.stderr, level=LOG_LEVEL)
-
-    logger.info("Starting account creator.")
-
     with open(SCRIPT_DIR / "config.toml", "rb") as f:
         config = tomllib.load(f)
+
+    logger.remove()
+    logger.add(sys.stderr, level=config["default"]["log_level"])
+
+    logger.info("Starting account creator.")
 
     imap_details = models.IMAPDetails(
         ip=config["imap"]["ip"],
@@ -523,10 +520,10 @@ def main():
     account_password = config["account"]["password"]
     set_2fa = config["account"]["set_2fa"]
 
-    use_headless_browser = config["default"]["headless"]
-    enable_dev_tools = config["default"]["enable_dev_tools"]
-    element_wait_timeout = config["default"]["element_wait_timeout"]
-    cache_update_threshold = config["default"]["cache_update_threshold"]
+    use_headless_browser = config["browser"]["headless"]
+    enable_dev_tools = config["browser"]["enable_dev_tools"]
+    element_wait_timeout = config["browser"]["element_wait_timeout"]
+    cache_update_threshold = config["browser"]["cache_update_threshold"]
 
     proxies_enabled = config["proxies"]["enabled"]
     proxies: list[models.Proxy] = [models.Proxy(**p) for p in config["proxies"]["list"]]
@@ -545,7 +542,7 @@ def main():
                 proxy = None
 
             ac = AccountCreator(
-                user_agent=USER_AGENT,
+                user_agent=config["browser"]["user_agent"],
                 element_wait_timeout=element_wait_timeout,
                 cache_update_threshold=cache_update_threshold,
                 enable_dev_tools=enable_dev_tools,
