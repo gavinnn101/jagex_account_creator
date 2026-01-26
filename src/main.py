@@ -324,7 +324,6 @@ class AccountCreator:
         tab = browser.latest_tab
         tab.set.auto_handle_alert()
 
-        # tab.set.blocked_urls = self.urls_to_block
         tab.run_cdp("Network.enable")
         tab.run_cdp("Network.setBlockedURLs", urls=self.urls_to_block)
 
@@ -356,8 +355,6 @@ class AccountCreator:
         if "Sorry, you have been blocked" in tab.html:
             logger.error("IP is blocked by CF. Exiting.")
             return None
-
-        # self.click_element(tab, "#CybotCookiebotDialogBodyButtonDecline", False)
 
         self.click_and_type(tab, "@id:email", jagex_account.email)
         self.click_and_type(
