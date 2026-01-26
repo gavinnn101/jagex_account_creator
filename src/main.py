@@ -18,7 +18,7 @@ from imap_tools import AND, MailBox
 from loguru import logger
 
 import models
-from traffic_filter_proxy_server import TrafficFilterProxy
+from gproxy import GProxy
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 
@@ -259,17 +259,12 @@ class AccountCreator:
         run_path = SCRIPT_DIR / f"run_{run_number}"
         run_path.mkdir()
 
-        filter_proxy = TrafficFilterProxy(
-            allowed_url_patterns=[
-                "jagex",
-                "cloudflare",
-                "ipify",
-            ],
-            upstream_proxy=self.proxy,
+        gproxy = GProxy(
+            upstream_proxy=self.proxy, allowed_url_patterns=["jagex", "cloudflare", "ipify"]
         )
-        filter_proxy.start_daemon()
+        gproxy.start()
 
-        browser = self.get_new_browser(run_path, filter_proxy.ip, filter_proxy.port)
+        browser = self.get_new_browser(run_path, gproxy.ip, gproxy.port)
         tab = browser.latest_tab
         tab.set.auto_handle_alert()
 
@@ -405,8 +400,8 @@ class AccountCreator:
         logger.debug(f"Deleting run temp folder: {run_path}")
         shutil.rmtree(run_path)
 
-        logger.debug("Stopping traffic filter proxy server.")
-        filter_proxy.stop()
+        logger.debug("Stopping proxy server.")
+        gproxy.stop()
 
         logger.info("Registration finished")
         return jagex_account
