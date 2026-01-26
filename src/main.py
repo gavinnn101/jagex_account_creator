@@ -471,6 +471,7 @@ def main():
     element_wait_timeout = config["default"]["element_wait_timeout"]
     cache_update_threshold = config["default"]["cache_update_threshold"]
 
+    proxies_enabled = config["proxies"]["enabled"]
     proxies: list[models.Proxy] = [models.Proxy(**p) for p in config["proxies"]["list"]]
 
     with ThreadPoolExecutor(max_workers=config["default"]["threads"]) as executor:
@@ -481,7 +482,10 @@ def main():
             account_domain = get_account_domain(domains=domains)
             account_email = f"{account_username}@{account_domain}"
 
-            proxy = proxies[i % len(proxies)]
+            if proxies_enabled:
+                proxy = proxies[i % len(proxies)]
+            else:
+                proxy = None
 
             ac = AccountCreator(
                 user_agent=USER_AGENT,
