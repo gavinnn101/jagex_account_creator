@@ -1,6 +1,7 @@
 [default]
-headless = false
+accounts_to_create = 1
 threads = 1
+headless = false
 element_wait_timeout = 30
 enable_dev_tools = false
 cache_update_threshold = 0.3

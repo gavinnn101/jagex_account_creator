@@ -16,7 +16,7 @@ class TrafficFilterProxy:
         ip: str = "127.0.0.1",
         port: int = None,
         allowed_url_patterns: list[str] = None,
-        upstream_proxy: Proxy = None,
+        upstream_proxy: Proxy | None = None,
     ):
         self.ip = ip
         self.port = port or self._find_free_port()
