@@ -16,7 +16,7 @@ class GProxy:
         self,
         ip: str = "127.0.0.1",
         port: int | None = None,
-        buffer_size: int = 1024,
+        buffer_size: int = 65_536,
         upstream_proxy: Proxy | None = None,
         allowed_url_patterns: list[str] | None = None,
     ):
