@@ -136,66 +136,52 @@ class AccountCreator:
         browser = Chromium(addr_or_opts=co)
         return browser
 
-    def get_browser_ip(self, tab: MixTab) -> str:
+    def get_browser_ip(self, tab: MixTab) -> str | None:
         """Get the IP address that the browser is using."""
         url = "https://api64.ipify.org/?format=raw"
-        if tab.get(url):
-            ip = tab.ele("tag:pre").text
-            return ip
-        else:
-            self.teardown(tab, "Couldn't get browser ip!")
+        if not tab.get(url):
+            return None
+        return tab.ele("tag:pre").text
 
-    def find_element(self, tab: MixTab, identifier: str, teardown: bool = True) -> ChromiumElement:
+    def find_element(self, tab: MixTab, identifier: str) -> ChromiumElement | None:
         """Tries to find an element in the tab."""
         logger.debug(f"Looking for element to click with identifier: {identifier}")
 
         logger.debug("Waiting for element to be loaded")
         found_element = tab.wait.eles_loaded(identifier)
         if not found_element:
-            error_msg = f"Couldn't find loaded element with identifier: {identifier}"
-            if teardown:
-                self.teardown(tab, error_msg)
-            else:
-                logger.warning(error_msg)
-                return
+            logger.warning(f"Couldn't find loaded element with identifier: {identifier}")
+            return None
 
         logger.debug("Getting element")
         element = tab.ele(identifier)
+        if not element:
+            logger.warning(f"Couldn't find element with identifier: {identifier}")
+            return None
+
         logger.debug("Waiting for element to be displayed")
         element.wait.displayed()
-        if not element:
-            error_msg = f"Couldn't find element with identifier: {identifier}"
-            if teardown:
-                self.teardown(tab, error_msg)
-            else:
-                logger.warning(error_msg)
 
         logger.debug("Returning element")
         return element
 
-    def click_element(self, tab: MixTab, identifier: str, teardown: bool = True) -> ChromiumElement:
-        element = self.find_element(tab, identifier, teardown)
-        if element:
-            logger.debug("Clicking element")
-            tab.actions.move_to(element).click()
+    def click_element(self, tab: MixTab, identifier: str) -> ChromiumElement | None:
+        element = self.find_element(tab, identifier)
+        if not element:
+            return None
+        logger.debug("Clicking element")
+        tab.actions.move_to(element).click()
         return element
 
-    def click_and_type(
-        self, tab: MixTab, identifier: str, text: str, teardown: bool = True
-    ) -> ChromiumElement:
+    def click_and_type(self, tab: MixTab, identifier: str, text: str) -> ChromiumElement | None:
         """Clicks on an element and then types the text."""
-        element = self.find_element(tab, identifier, teardown)
-        if element:
-            logger.debug(f"Clicking element and then typing: {text}")
-            key_press_interval = 0.01
-            tab.actions.move_to(element).click().type(text, interval=key_press_interval)
+        element = self.find_element(tab, identifier)
+        if not element:
+            return None
+        logger.debug(f"Clicking element and then typing: {text}")
+        key_press_interval = 0.01
+        tab.actions.move_to(element).click().type(text, interval=key_press_interval)
         return element
-
-    def teardown(self, tab: MixTab, exit_status: str) -> None:
-        """Closes tab and exits."""
-        logger.info(f"Exiting with status: {exit_status}")
-        tab.close()
-        sys.exit(exit_status)
 
     def locate_cf_button(self, tab: MixTab) -> ChromiumElement | None:
         """Finds the CF challenge button in the tab. Credit to CloudflareBypasser."""
@@ -233,7 +219,7 @@ class AccountCreator:
         logger.error("Max retries reached. Failed to find CF challenge button.")
         return False
 
-    def _get_verification_code(self, tab: MixTab, account_email: str) -> str:
+    def _get_verification_code(self, tab: MixTab, account_email: str) -> str | None:
         """Gets the verification code from catch all email via imap"""
         email_query = AND(to=account_email, seen=False)
         code_regex = r'data-testid="registration-started-verification-code"[^>]*>([A-Z0-9]+)<'
@@ -247,21 +233,19 @@ class AccountCreator:
                     if match:
                         return match.group(1)
                 time.sleep(0.1)
-        self.teardown(tab, "Verification code pattern not found in email")
+        return None
 
     def _verify_account_creation(self, tab: MixTab) -> bool:
         """Checks to see if we landed on the registration completed page."""
         return tab.wait.title_change("Registration completed")
 
-    def register_account(self) -> models.JagexAccount:
+    def register_account(self) -> models.JagexAccount | None:
         """Wrapper function to fully register a Jagex account."""
         run_number = random.randint(10_000, 65_535)
         run_path = SCRIPT_DIR / f"run_{run_number}"
         run_path.mkdir()
 
-        gproxy = GProxy(
-            upstream_proxy=self.proxy, allowed_url_patterns=["jagex", "cloudflare", "ipify"]
-        )
+        gproxy = GProxy(upstream_proxy=self.proxy, allowed_hosts=["jagex", "cloudflare", "ipify"])
         gproxy.start()
 
         browser = self.get_new_browser(run_path, gproxy.ip, gproxy.port)
@@ -273,6 +257,10 @@ class AccountCreator:
         tab.run_cdp("Network.setBlockedURLs", urls=self.urls_to_block)
 
         browser_ip = self.get_browser_ip(tab)
+        if not browser_ip:
+            logger.error("Failed to get browser ip. Exiting.")
+            tab.close()
+            return None
         logger.info(f"Browser IP: {browser_ip}")
 
         jagex_account = models.JagexAccount(
@@ -288,12 +276,17 @@ class AccountCreator:
         )
 
         if not tab.get(self.registration_url):
-            self.teardown(f"Failed to go to url: {self.registration_url}")
+            logger.error(f"Failed to go to url: {self.registration_url}")
+            tab.close()
+            return None
+
         tab.wait.title_change("Create a Jagex account")
         tab.wait.url_change(self.registration_url)
 
         if "Sorry, you have been blocked" in tab.html:
-            self.teardown(tab, "IP is blocked by CF. Exiting.")
+            logger.error("IP is blocked by CF. Exiting.")
+            tab.close()
+            return None
 
         # self.click_element(tab, "#CybotCookiebotDialogBodyButtonDecline", False)
 
@@ -319,7 +312,9 @@ class AccountCreator:
 
         code = self._get_verification_code(tab, self.account_username)
         if not code:
-            self.teardown(tab, "Failed to get registration verification code.")
+            logger.error("Failed to get registration verification code.")
+            tab.close()
+            return None
         self.click_and_type(tab, "@id:registration-verify-form-code-input", code)
         self.click_element(tab, "@id:registration-verify-form-continue-button")
         tab.wait.doc_loaded()
@@ -334,12 +329,16 @@ class AccountCreator:
         tab.wait.doc_loaded()
 
         if not self._verify_account_creation(tab):
-            self.teardown(tab, "Failed to verify account creation.")
+            logger.error("Failed to verify account creation.")
+            tab.close()
+            return None
 
         if self.set_2fa:
             logger.debug("Going to management page")
             if not tab.get(self.management_url):
-                self.teardown(tab, "Failed to get to the account management page.")
+                logger.error("Failed to get to the account management page.")
+                tab.close()
+                return None
             tab.wait.doc_loaded()
 
             # DrissionPage used to automatically pass this cloudflare check but not atm.
