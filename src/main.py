@@ -292,7 +292,7 @@ class AccountCreator:
             if original_size == 0:
                 size_diff_percent = 100.0 if run_size else 0.0
             else:
-                size_diff_percent = abs(run_size - original_size) / original_size * 100
+                size_diff_percent = (run_size - original_size) / original_size * 100
 
             logger.debug(
                 f"Cache sizes - run: {run_size}, original: {original_size}, diff: {size_diff_percent:.1f}%"
