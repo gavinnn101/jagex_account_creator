@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pyotp
 from DrissionPage import Chromium, ChromiumOptions
-from DrissionPage.common import Settings
+from DrissionPage.common import Settings, wait_until
 from DrissionPage.items import ChromiumElement, MixTab
 from imap_tools import AND, MailBox
 from loguru import logger
@@ -20,6 +20,12 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 
 class ElementNotFoundError(Exception):
     """Raised when a required element cannot be found."""
+
+    pass
+
+
+class RegistrationError(Exception):
+    """An error that occurred during account registration."""
 
     pass
 
@@ -121,7 +127,7 @@ class AccountCreator:
             co.set_user_agent(self.user_agent)
 
         if self.use_headless_browser:
-            co.set_argument("--headless=new")
+            co.set_argument("--headless")
             if not self.user_agent:
                 logger.warning(
                     "Using headless without setting a user agent. This will likely get your session detected."
@@ -134,143 +140,122 @@ class AccountCreator:
         browser = Chromium(addr_or_opts=co)
         return browser
 
-    def _get_browser_ip(self, tab: MixTab) -> str | None:
+    def _get_browser_ip(self, tab: MixTab) -> str:
         """Get the IP address that the browser is using."""
         url = "https://api64.ipify.org/?format=raw"
         if not tab.get(url):
-            return None
-        return tab.ele("tag:pre").text
+            raise RegistrationError("Failed to get to ipify to verify our browser ip.")
+        ele = tab.ele("tag:pre")
+        if not ele:
+            raise RegistrationError("Failed to find the ip element in the ipify text.")
+        return ele.text
 
-    def _find_element(
-        self, tab: MixTab, identifier: str, required: bool = True
-    ) -> ChromiumElement | None:
-        """Tries to find an element in the tab."""
+    def _find_element(self, tab: MixTab, identifier: str) -> ChromiumElement:
+        """Find an element in the tab. Raises ElementNotFoundError."""
         logger.debug(f"Looking for element to click with identifier: {identifier}")
 
         logger.debug("Waiting for element to be loaded")
         if not tab.wait.eles_loaded(identifier):
-            if required:
-                raise ElementNotFoundError(
-                    f"Couldn't find loaded element with identifier: {identifier}"
-                )
-            return None
+            raise ElementNotFoundError(
+                f"Couldn't find loaded element with identifier: {identifier}"
+            )
 
         logger.debug("Getting element")
         element = tab.ele(identifier)
         if not element:
-            if required:
-                raise ElementNotFoundError(f"Couldn't find element with identifier: {identifier}")
-            return None
+            raise ElementNotFoundError(f"Failed to get element: {identifier}")
 
         logger.debug("Waiting for element to be displayed")
-        element.wait.displayed()
+        try:
+            element.wait.displayed()
+        except TimeoutError as e:
+            raise ElementNotFoundError(
+                f"Timed out waiting for element to be displayed: {identifier}"
+            ) from e
 
         logger.debug("Returning element")
         return element
 
-    def _click_element(
-        self, tab: MixTab, identifier: str, required: bool = True
-    ) -> ChromiumElement | None:
-        element = self._find_element(tab, identifier, required=required)
-        if not element:
-            return None
+    def _click_element(self, tab: MixTab, identifier: str) -> ChromiumElement:
+        """Left click the provided element."""
+        element = self._find_element(tab, identifier)
         logger.debug("Clicking element")
         tab.actions.move_to(element).click()
         return element
 
     def _click_and_type(
-        self, tab: MixTab, identifier: str, text: str, required: bool = True
-    ) -> ChromiumElement | None:
-        """Clicks on an element and then types the text."""
-        element = self._find_element(tab, identifier, required=required)
-        if not element:
-            return None
+        self, tab: MixTab, identifier: str, text: str, typing_interval: float = 0.01
+    ) -> ChromiumElement:
+        """Click the provided element and then type the text."""
+        element = self._find_element(tab, identifier)
         logger.debug(f"Clicking element and then typing: {text}")
-        tab.actions.move_to(element).click().type(text, interval=0.01)
+        tab.actions.move_to(element).click().type(text, interval=typing_interval)
         return element
 
     def _locate_cf_button(self, tab: MixTab) -> ChromiumElement | None:
-        """Finds the CF challenge button in the tab. Credit to CloudflareBypasser."""
+        """Finds the CF challenge button in the tab."""
         logger.info("Looking for CF checkbox.")
 
-        try:
-            for ele in tab.eles("tag:input", timeout=1):
-                attrs = ele.attrs
-                if not (attrs.get("type") == "hidden" and "turnstile" in attrs.get("name", "")):
-                    continue
+        for ele in tab.eles("tag:input", timeout=1):
+            attrs = ele.attrs
+            if not (attrs.get("type") == "hidden" and "turnstile" in attrs.get("name", "")):
+                continue
 
-                logger.info(f"Found turnstile input: {attrs['name']}")
+            logger.info(f"Found turnstile input: {attrs['name']}")
 
-                container = ele.parent()
-                shadow = container.shadow_root or container.child().shadow_root
-                if not shadow:
-                    logger.info("Couldn't access shadow root")
-                    continue
+            container = ele.parent()
+            shadow = container.shadow_root or container.child().shadow_root
+            if not shadow:
+                logger.info("Couldn't access shadow root")
+                continue
 
-                iframe = shadow.ele("tag:iframe")
-                if not iframe:
-                    logger.info("No iframe in shadow root")
-                    continue
+            iframe = shadow.ele("tag:iframe")
+            if not iframe:
+                logger.info("No iframe in shadow root")
+                continue
 
-                frame = tab.get_frame(iframe)
-                if not frame:
-                    logger.info("Couldn't get frame context")
-                    continue
+            frame = tab.get_frame(iframe)
+            if not frame:
+                logger.info("Couldn't get frame context")
+                continue
 
-                body = frame.ele("tag:body")
-                if body and body.shadow_root:
-                    if checkbox := body.shadow_root.ele("tag:input"):
-                        return checkbox
-        except Exception as e:
-            logger.debug(f"Error traversing CF structure: {e}")
+            body = frame.ele("tag:body")
+            if body and body.shadow_root:
+                if checkbox := body.shadow_root.ele("tag:input"):
+                    return checkbox
 
         return None
 
-    def _bypass_challenge(self, tab: MixTab) -> bool:
+    def _bypass_challenge(self, tab: MixTab, timeout: int) -> bool:
         """Attempts to bypass the CF challenge by clicking the checkbox."""
-        max_retries = 5
-        sleep_seconds = 2
+        page_title = "Just a moment"
+        if page_title not in tab.title:
+            logger.debug("Not on challenge page.")
+            return True
 
-        for attempt in range(max_retries):
-            if "Just a moment" not in tab.title:
-                logger.info("Challenge already passed or not present.")
-                return True
+        button = self._locate_cf_button(tab)
+        if not button:
+            return False
 
-            button = self._locate_cf_button(tab)
-            if button:
-                logger.info("Found CF challenge button. Clicking.")
-                try:
-                    button.click()
-                except Exception as e:
-                    logger.debug(f"Click failed: {e}")
-                    continue
-                return tab.wait.title_change("Just a moment", exclude=True, timeout=10)
+        button.click()
+        return tab.wait.title_change(page_title, exclude=True, timeout=timeout)
 
-            logger.info(f"Checkbox not found yet, attempt {attempt + 1}/{max_retries}")
-            time.sleep(sleep_seconds)
-
-        logger.error("Max retries reached. Failed to bypass CF challenge.")
-        return False
-
-    def _get_verification_code(self, account_email: str) -> str | None:
+    def _get_verification_code(self, account_email: str, timeout_seconds: int = 30) -> str:
         """Gets the verification code from catch all email via imap"""
         email_query = AND(to=account_email, seen=False)
         code_regex = r'data-testid="registration-started-verification-code"[^>]*>([A-Z0-9]+)<'
         with MailBox(self.imap_details.ip, self.imap_details.port).login(
             self.imap_details.email, self.imap_details.password
         ) as mailbox:
-            for _ in range(self.element_wait_timeout * 10):
+            timeout = time.time() + timeout_seconds
+            while time.time() < timeout:
                 emails = mailbox.fetch(email_query)
                 for email in emails:
                     match = re.search(code_regex, email.html)
                     if match:
                         return match.group(1)
                 time.sleep(0.1)
-        return None
-
-    def _verify_account_creation(self, tab: MixTab) -> bool:
-        """Checks to see if we landed on the registration completed page."""
-        return tab.wait.title_change("Registration completed")
+        raise RegistrationError("Failed to get account verification code.")
 
     def _update_cache(self, run_cache_path: Path) -> None:
         """Update primary cache if run cache is significantly different."""
@@ -313,8 +298,8 @@ class AccountCreator:
 
         shutil.rmtree(run_path, ignore_errors=True)
 
-    def _handle_registration(self, browser: Chromium) -> models.JagexAccount | None:
-        """Do the account registration flow."""
+    def _handle_registration(self, browser: Chromium) -> models.JagexAccount:
+        """Do the account registration flow and return a JagexAccount or raise a RegistrationError."""
         tab = browser.latest_tab
         tab.set.auto_handle_alert()
 
@@ -322,9 +307,6 @@ class AccountCreator:
         tab.run_cdp("Network.setBlockedURLs", urls=self._URLS_TO_BLOCK)
 
         browser_ip = self._get_browser_ip(tab)
-        if not browser_ip:
-            logger.error("Failed to get browser ip. Exiting.")
-            return None
         logger.info(f"Browser IP: {browser_ip}")
 
         jagex_account = models.JagexAccount(
@@ -339,16 +321,13 @@ class AccountCreator:
             proxy=self.proxy,
         )
 
+        logger.debug(f"Going to registration url: {self._REGISTRATION_URL}")
         if not tab.get(self._REGISTRATION_URL):
-            logger.error(f"Failed to go to url: {self._REGISTRATION_URL}")
-            return None
-
-        tab.wait.title_change("Create a Jagex account")
-        tab.wait.url_change(self._REGISTRATION_URL)
+            raise RegistrationError(f"Failed to go to url: {self._REGISTRATION_URL}")
+        tab.wait.title_change(text="Create a Jagex account", raise_err=True)
 
         if "Sorry, you have been blocked" in tab.html:
-            logger.error("IP is blocked by CF. Exiting.")
-            return None
+            raise RegistrationError("IP is blocked by CF. Exiting.")
 
         self._click_and_type(tab, "@id:email", jagex_account.email)
         self._click_and_type(
@@ -368,41 +347,38 @@ class AccountCreator:
         )
         self._click_element(tab, "@id:registration-start-accept-agreements")
         self._click_element(tab, "@id:registration-start-form--continue-button")
-        tab.wait.doc_loaded()
+        tab.wait.doc_loaded(raise_err=True)
 
         code = self._get_verification_code(self.account_username)
-        if not code:
-            logger.error("Failed to get registration verification code.")
-            return None
         self._click_and_type(tab, "@id:registration-verify-form-code-input", code)
         self._click_element(tab, "@id:registration-verify-form-continue-button")
-        tab.wait.doc_loaded()
+        tab.wait.doc_loaded(raise_err=True)
 
         self._click_and_type(tab, "@id:displayName", self.account_username)
         self._click_element(tab, "@id:registration-account-name-form--continue-button")
-        tab.wait.doc_loaded()
+        tab.wait.doc_loaded(raise_err=True)
 
         self._click_and_type(tab, "@id:password", self.account_password)
         self._click_and_type(tab, "@id:repassword", self.account_password)
         self._click_element(tab, "@id:registration-password-form--create-account-button")
-        tab.wait.doc_loaded()
+        tab.wait.doc_loaded(raise_err=True)
 
-        if not self._verify_account_creation(tab):
-            logger.error("Failed to verify account creation.")
-            return None
+        tab.wait.title_change("Registration completed", raise_err=True)
 
         if self.set_2fa:
             logger.debug("Going to management page")
             if not tab.get(self._MANAGEMENT_URL):
-                logger.error("Failed to get to the account management page.")
-                return None
-            tab.wait.doc_loaded()
+                raise RegistrationError("Failed to get to the account management page.")
+            tab.wait.doc_loaded(raise_err=True)
 
-            while "Just a moment" not in tab.title:
-                time.sleep(0.1)
-            self._bypass_challenge(tab)
+            challenge_timeout_seconds = 10
+            wait_until(
+                self._bypass_challenge,
+                kwargs={"tab": tab, "timeout": challenge_timeout_seconds},
+                timeout=challenge_timeout_seconds,
+            )
 
-            tab.wait.url_change(self._MANAGEMENT_URL)
+            tab.wait.url_change(self._MANAGEMENT_URL, raise_err=True)
 
             self._click_element(tab, "@data-testid:mfa-enable-totp-button")
             self._click_element(tab, "@id:authentication-setup-show-secret")
@@ -429,7 +405,7 @@ class AccountCreator:
         logger.info("Registration finished")
         return jagex_account
 
-    def register_account(self) -> models.JagexAccount | None:
+    def register_account(self) -> models.JagexAccount:
         """Wrapper function to fully register a Jagex account."""
         run_number = random.randint(10_000, 65_535)
         run_path = SCRIPT_DIR / f"run_{run_number}"
@@ -442,12 +418,9 @@ class AccountCreator:
 
         success = False
         try:
-            result = self._handle_registration(browser=browser)
-            success = result is not None
-            return result
-        except ElementNotFoundError as e:
-            logger.error(f"Registration failed: {e}")
-            return None
+            account = self._handle_registration(browser=browser)
+            success = True
+            return account
         finally:
             self._cleanup(
                 run_path=run_path, browser=browser, gproxy=gproxy, update_primary_cache=success

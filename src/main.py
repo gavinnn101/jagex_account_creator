@@ -112,14 +112,11 @@ def main():
         for future in as_completed(futures):
             try:
                 result = future.result()
-                if not result:
-                    logger.error("Failed to create account.")
-                    continue
-
+            except Exception as e:
+                logger.error(f"Account creation for account: {account_email} failed: {e}")
+            else:
                 logger.success(f"Account created: {result}")
                 save_account_to_file(accounts_file_path=ACCOUNTS_FILE_PATH, account=result)
-            except Exception as e:
-                logger.error(f"Account creation failed: {e}")
 
 
 if __name__ == "__main__":
