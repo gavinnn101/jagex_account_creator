@@ -2,6 +2,7 @@ import json
 import random
 import string
 import sys
+import time
 import tomllib
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -112,6 +113,8 @@ def main():
             )
             future = executor.submit(ac.register_account)
             future_to_email[future] = account_email
+
+            time.sleep(1)
 
         for future in as_completed(future_to_email):
             email = future_to_email[future]
