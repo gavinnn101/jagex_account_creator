@@ -117,11 +117,9 @@ class AccountCreator:
         # co.no_imgs()  # no_imgs() seems to cause cloudflare challenge to infinite loop
 
         # Disable chrome optimization features to save on bandwidth
-        # https://source.chromium.org/chromium/chromium/src/+/main:components/optimization_guide/core/optimization_guide_features.cc;l=49-71
-        # TODO: Investigate why this doesn't work. Not sure if its DrissionPage not setting them correctly or a different issue.
-        # co.set_argument(
-        #     "--disable-features=OptimizationGuideModelDownloading,OptimizationHints,OptimizationHintsFetching,OptimizationHintsFetchingAnonymousDataConsent,OptimizationTargetPrediction"
-        # )
+        co.set_argument(
+            "--disable-features=OptimizationGuideModelDownloading,OptimizationHintsFetching,OptimizationTargetPrediction,OptimizationHints"
+        )
 
         self._setup_browser_cache(co, run_path=run_path)
 
