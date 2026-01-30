@@ -10,14 +10,34 @@ user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTM
 element_wait_timeout = 30
 cache_update_threshold = 0.3
 
-[imap]
+[email]
+use_imap = false
+use_guerrilla_mail = true
+
+[email.guerrilla_mail]
+use_proxy = true
+domains = [
+    "sharklasers.com",
+    "guerrillamail.info",
+    "grr.la",
+    "guerrillamail.biz",
+    "guerrillamail.com",
+    "guerrillamail.de",
+    "guerrillamail.net",
+    "guerrillamail.org",
+    "guerrillamail.com",
+    "pokemail.net",
+    "spam4.me",
+]
+
+[email.imap]
 ip = "mail.domain.com"
 port = 993
 email = "catchall@domain.com"
 password = "myCatchAllEmailPassword"
+domains = []
 
 [account]
-domains = ["mydomain1.com", "myotherdomain.net"]
 password = "OsrsEnjoyer!123"
 set_2fa = true
 
