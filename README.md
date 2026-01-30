@@ -71,4 +71,5 @@ Guerrilla Mail is a temporary email service that has multiple free domains to us
 If using Guerrilla Mail in the script, the script will generate a random string as the username, choose a random domain from `email.guerrilla_mail.list`, and use that as the account's registration email.
 
 # Contact
+Join the community Discord server for suggestions, help, etc: https://discord.gg/qW3mTnRp
 My only discord is `gavinnn` (uid: `132269908628078592`)
