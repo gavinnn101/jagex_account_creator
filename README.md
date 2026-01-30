@@ -5,11 +5,13 @@ Utilizes the Python DrissionPage library to automate a Chrome browser and sign u
 * Takes ~15 seconds per account without 2FA enabled. 
 * Takes ~30 seconds per account with 2FA enabled.
 * Multi-threaded - You can make as many accounts as you want in 15-30 seconds as long as you have computer resources / proxies to handle the threads!
-* Supports headless mode.
+* Supports running the browser in headless mode.
 * ~10MB of data usage pre-cache, 900kb of data usage post-cache!
 * * Sets up a local proxy server that intercepts all of the Chrome traffic and blocks requests that aren't required.
 * * Elements that can't be blocked are saved to a cache that is shared by all runs and frequently updated.
-* Utilizes a catch-all email via imap for easy and quick account verification.
+* Two options for account email:
+* * Utilize a catch-all email via imap.
+* * Utilize the Guerrilla Mail temp email service.
 * Supports enabling TOTP 2FA on created accounts.
 * Each successful account creation appends the account and all of the registration info used to `accounts.json`.
 
@@ -30,12 +32,11 @@ Utilizes the Python DrissionPage library to automate a Chrome browser and sign u
 * * Unzip the download to the location of your choice.
 * Setup `uv` if not already - https://docs.astral.sh/uv/getting-started/installation/
 * Open `$script_root\src\config.toml` and edit the settings accordingly.
-* * You'll need to edit:
-* * * `account.domains`
-* * * `account.password`
-* * * `imap.ip`
-* * * `imap.email`
-* * * `imap.password`
+* * Ensure the `user_agent` string at `chrome://version` in your browser matches the `user_agent` string in the config.
+* * Set either `use_imap` or `use_guerrilla_mail` to `true`.
+* * * Set `email.guerrilla_mail` or `email.imap` settings accordingly.
+* * `account.password`
+* * Enable `proxies` and setup list if being used.
 * Open a terminal in the root folder of your download:
 * * Run `cd src`.
 * * Run `uv run main.py`.
@@ -43,7 +44,7 @@ Utilizes the Python DrissionPage library to automate a Chrome browser and sign u
 ### IMAP / Domains Explanation
 Your `imap.email` should have a catch-all alias pointing to it for all domains listed under `account.domains`
 ```
-[account]
+[email.imap]
 domains = ["mydomain1.com", "myotherdomain.net"]
 
 [imap]
@@ -63,6 +64,11 @@ To achieve this functionality I would:
 * Pay for [EternalFarm](https://eternalpayments.selly.store/category/12bd08e1) because they host an account creator for you.
 * * (Not afilliated, don't add me for support.)
 * Replace functionality with browsing to a temp email service instead. (will use more bandwidth, be slower, etc.)
+
+### Guerrilla Mail Explanation
+Guerrilla Mail is a temporary email service that has multiple free domains to use to receive emails. The script can utilize the Guerrilla Mail API to set a temporary email and use it for registration. The benefit of this is you don't need IMAP setup, custom domains, etc.
+
+If using Guerrilla Mail in the script, the script will generate a random string as the username, choose a random domain from `email.guerrilla_mail.list`, and use that as the account's registration email.
 
 # Contact
 My only discord is `gavinnn` (uid: `132269908628078592`)

@@ -10,4 +10,5 @@ dependencies = [
     "loguru>=0.7.3",
     "pydantic>=2.12.5",
     "pyotp>=2.9.0",
+    "rnet>=3.0.0rc20",
 ]

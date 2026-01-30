@@ -59,34 +59,38 @@ class AccountCreator:
     _REGISTRATION_URL = "https://account.jagex.com/en-GB/login/registration-start"
     _MANAGEMENT_URL = "https://account.jagex.com/en-GB/manage/profile"
 
+    _GUERRILLA_MAIL_API_URL = "https://api.guerrillamail.com/ajax.php"
+
     def __init__(
         self,
         user_agent: str,
         element_wait_timeout: int,
         cache_update_threshold: float,
         enable_dev_tools: bool,
-        imap_details: models.IMAPDetails,
         account_email: str,
         account_password: str,
         proxy: models.Proxy | None = None,
         set_2fa: bool = False,
         use_headless_browser: bool = False,
+        imap_details: models.IMAPDetails | None = None,
+        use_proxy_for_guerrilla_mail: bool = True,
     ) -> None:
         self.user_agent = user_agent
         self.enable_dev_tools = enable_dev_tools
-
-        self.proxy = proxy
-        self.imap_details = imap_details
-        self.account_email = account_email
-        self.account_username = account_email.split("@")[0]
-        self.account_password = account_password
-        self.set_2fa = set_2fa
         self.use_headless_browser = use_headless_browser
-
         self.element_wait_timeout = element_wait_timeout
 
         self.cache_update_threshold = cache_update_threshold
         self.cache_folder = SCRIPT_DIR / "cache"
+
+        self.proxy = proxy
+        self.account_email = account_email
+        self.account_username = account_email.split("@")[0]
+        self.account_password = account_password
+        self.set_2fa = set_2fa
+
+        self.imap_details = imap_details
+        self.use_proxy_for_guerrilla_mail = use_proxy_for_guerrilla_mail
 
         Settings.set_language("en")
 
@@ -240,12 +244,14 @@ class AccountCreator:
         button.click()
         return tab.wait.title_change(page_title, exclude=True, timeout=timeout)
 
-    def _get_verification_code(self, account_email: str, timeout_seconds: int = 30) -> str:
-        """Gets the verification code from catch all email via imap"""
+    def _get_verification_code_imap(
+        self, imap_details: models.IMAPDetails, account_email: str, timeout_seconds: int = 30
+    ) -> str:
+        """Gets the verification code from catch all email via imap."""
         email_query = AND(to=account_email, seen=False)
         code_regex = r'data-testid="registration-started-verification-code"[^>]*>([A-Z0-9]+)<'
-        with MailBox(self.imap_details.ip, self.imap_details.port).login(
-            self.imap_details.email, self.imap_details.password
+        with MailBox(imap_details.ip, imap_details.port).login(
+            imap_details.email, imap_details.password
         ) as mailbox:
             timeout = time.time() + timeout_seconds
             while time.time() < timeout:
@@ -255,7 +261,79 @@ class AccountCreator:
                     if match:
                         return match.group(1)
                 time.sleep(0.1)
-        raise RegistrationError("Failed to get account verification code.")
+        raise RegistrationError("Timed out waiting for registration code.")
+
+    def _get_verification_code_guerrilla_mail(self, account_email: str, timeout_seconds: int = 30):
+        """Get the verification code for the jagex account from a temp Guerrilla Mail email."""
+        from datetime import timedelta
+
+        import rnet
+        from rnet.blocking import Client
+
+        cookie_jar = rnet.Jar()
+        rnet_client = Client(
+            emulation=rnet.EmulationOption(
+                emulation=rnet.Emulation.Chrome143,
+                emulation_os=rnet.EmulationOS.Windows,
+            ),
+            user_agent=self.user_agent,
+            cookie_provider=cookie_jar,
+            timeout=timedelta(seconds=self.element_wait_timeout),
+            proxies=[
+                rnet.Proxy.all(
+                    f"http://{self.proxy.username}:{self.proxy.password}@{self.proxy.ip}:{self.proxy.port}"
+                )
+            ]
+            if self.proxy and self.use_proxy_for_guerrilla_mail
+            else None,
+        )
+
+        logger.debug("Getting account verification code via Guerrilla mail.")
+
+        get_email_resp = rnet_client.get(
+            url=self._GUERRILLA_MAIL_API_URL,
+            query={"f": "get_email_address", "lang": "en"},
+        )
+        logger.debug(f"Response: {get_email_resp}")
+        get_email_resp.raise_for_status()
+
+        sid_token = get_email_resp.json()["sid_token"]
+
+        account_username = account_email.split("@")[0]
+
+        logger.debug(f"Sending request to set Guerrilla Mail email to: {account_username}.")
+        set_email_resp = rnet_client.get(
+            url=self._GUERRILLA_MAIL_API_URL,
+            query={
+                "f": "set_email_user",
+                "email_user": account_username,
+                "lang": "en",
+                "sid_token": sid_token,
+            },
+        )
+        logger.debug(f"Response: {set_email_resp}")
+        set_email_resp.raise_for_status()
+
+        if account_username not in set_email_resp.json()["email_addr"]:
+            raise RegistrationError("Failed to set account email on Guerrilla Mail.")
+
+        timeout = time.time() + timeout_seconds
+        while time.time() < timeout:
+            logger.debug("Sending request to check our email.")
+            check_email_resp = rnet_client.get(
+                url=self._GUERRILLA_MAIL_API_URL,
+                query={"f": "check_email", "sid_token": sid_token, "seq": 0},
+            )
+            logger.debug(f"Response: {check_email_resp}")
+            check_email_resp.raise_for_status()
+
+            for email in check_email_resp.json()["list"]:
+                if email["mail_from"] != "no-reply@contact.jagex.com":
+                    continue
+                mail_subject: str = email["mail_subject"]
+                return mail_subject.split()[0]
+            time.sleep(1)
+        raise RegistrationError("Timed out waiting for registration code.")
 
     def _update_cache(self, run_cache_path: Path) -> None:
         """Update primary cache if run cache is significantly different."""
@@ -349,7 +427,10 @@ class AccountCreator:
         self._click_element(tab, "@id:registration-start-form--continue-button")
         tab.wait.doc_loaded(raise_err=True)
 
-        code = self._get_verification_code(self.account_username)
+        if self.imap_details:
+            code = self._get_verification_code_imap(self.imap_details, self.account_username)
+        else:
+            code = self._get_verification_code_guerrilla_mail(self.account_username)
         self._click_and_type(tab, "@id:registration-verify-form-code-input", code)
         self._click_element(tab, "@id:registration-verify-form-continue-button")
         tab.wait.doc_loaded(raise_err=True)

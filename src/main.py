@@ -62,50 +62,53 @@ def main():
 
     logger.info("Starting account creator.")
 
-    imap_details = models.IMAPDetails(
-        ip=config["imap"]["ip"],
-        port=config["imap"]["port"],
-        email=config["imap"]["email"],
-        password=config["imap"]["password"],
-    )
+    use_guerrilla_mail = config["email"]["use_guerrilla_mail"]
+    use_imap = config["email"]["use_imap"]
+    imap_details = None
+    if use_imap and use_guerrilla_mail:
+        logger.error("`use_imap` and `use_guerrilla_mail` can't both be True.")
+        return
+    elif use_imap:
+        imap_details = models.IMAPDetails(
+            ip=config["email"]["imap"]["ip"],
+            port=config["email"]["imap"]["port"],
+            email=config["email"]["imap"]["email"],
+            password=config["email"]["imap"]["password"],
+        )
+        domains = config["email"]["imap"]["domains"]
+    elif use_guerrilla_mail:
+        domains = config["email"]["guerrilla_mail"]["domains"]
+    else:
+        logger.error("Must use either imap or guerrilla mail.")
+        return
 
-    accounts_to_create = config["default"]["accounts_to_create"]
-    domains = config["account"]["domains"]
-    account_password = config["account"]["password"]
-    set_2fa = config["account"]["set_2fa"]
-
-    use_headless_browser = config["browser"]["headless"]
-    enable_dev_tools = config["browser"]["enable_dev_tools"]
-    element_wait_timeout = config["browser"]["element_wait_timeout"]
-    cache_update_threshold = config["browser"]["cache_update_threshold"]
-
-    proxies_enabled = config["proxies"]["enabled"]
     proxies: list[models.Proxy] = [models.Proxy(**p) for p in config["proxies"]["list"]]
 
     with ThreadPoolExecutor(max_workers=config["default"]["threads"]) as executor:
         futures: list[Future] = []
 
-        for i in range(accounts_to_create):
+        for i in range(config["default"]["accounts_to_create"]):
             account_username = generate_username()
             account_domain = get_account_domain(domains=domains)
             account_email = f"{account_username}@{account_domain}"
 
-            if proxies_enabled:
+            if config["proxies"]["enabled"]:
                 proxy = proxies[i % len(proxies)]
             else:
                 proxy = None
 
             ac = AccountCreator(
                 user_agent=config["browser"]["user_agent"],
-                element_wait_timeout=element_wait_timeout,
-                cache_update_threshold=cache_update_threshold,
-                enable_dev_tools=enable_dev_tools,
+                element_wait_timeout=config["browser"]["element_wait_timeout"],
+                cache_update_threshold=config["browser"]["cache_update_threshold"],
+                enable_dev_tools=config["browser"]["enable_dev_tools"],
                 proxy=proxy,
-                imap_details=imap_details,
                 account_email=account_email,
-                account_password=account_password,
-                set_2fa=set_2fa,
-                use_headless_browser=use_headless_browser,
+                account_password=config["account"]["password"],
+                set_2fa=config["account"]["set_2fa"],
+                use_headless_browser=config["browser"]["headless"],
+                imap_details=imap_details,
+                use_proxy_for_guerrilla_mail=config["email"]["guerrilla_mail"]["use_proxy"],
             )
             futures.append(executor.submit(ac.register_account))
 
