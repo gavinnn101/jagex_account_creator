@@ -41,8 +41,8 @@ Utilizes the Python DrissionPage library to automate a Chrome browser and sign u
 * * Run `cd src`.
 * * Run `uv run main.py`.
 
-### IMAP / Domains Explanation
-Your `imap.email` should have a catch-all alias pointing to it for all domains listed under `account.domains`
+### IMAP Explanation
+Your `imap.email` should have a catch-all alias pointing to it for all domains listed under `imap.domains`
 ```
 [email.imap]
 domains = ["mydomain1.com", "myotherdomain.net"]
