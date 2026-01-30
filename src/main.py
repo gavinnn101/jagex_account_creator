@@ -85,7 +85,7 @@ def main():
     proxies: list[models.Proxy] = [models.Proxy(**p) for p in config["proxies"]["list"]]
 
     with ThreadPoolExecutor(max_workers=config["default"]["threads"]) as executor:
-        futures: list[Future] = []
+        future_to_email: dict[Future, str] = {}
 
         for i in range(config["default"]["accounts_to_create"]):
             account_username = generate_username()
@@ -110,13 +110,15 @@ def main():
                 imap_details=imap_details,
                 use_proxy_for_guerrilla_mail=config["email"]["guerrilla_mail"]["use_proxy"],
             )
-            futures.append(executor.submit(ac.register_account))
+            future = executor.submit(ac.register_account)
+            future_to_email[future] = account_email
 
-        for future in as_completed(futures):
+        for future in as_completed(future_to_email):
+            email = future_to_email[future]
             try:
                 result = future.result()
             except Exception as e:
-                logger.error(f"Account creation for account: {account_email} failed: {e}")
+                logger.error(f"Account creation for account: {email} failed: {e}")
             else:
                 logger.success(f"Account created: {result}")
                 save_account_to_file(accounts_file_path=ACCOUNTS_FILE_PATH, account=result)
