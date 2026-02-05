@@ -63,7 +63,6 @@ To achieve this functionality I would:
 * * (Not afilliated, don't add me for support.)
 * Pay for [EternalFarm](https://eternalpayments.selly.store/category/12bd08e1) because they host an account creator for you.
 * * (Not afilliated, don't add me for support.)
-* Replace functionality with browsing to a temp email service instead. (will use more bandwidth, be slower, etc.)
 
 ### Guerrilla Mail Explanation
 Guerrilla Mail is a temporary email service that has multiple free domains to use to receive emails. The script can utilize the Guerrilla Mail API to set a temporary email and use it for registration. The benefit of this is you don't need IMAP setup, custom domains, etc.
