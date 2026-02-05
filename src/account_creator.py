@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pyotp
 from DrissionPage import Chromium, ChromiumOptions
-from DrissionPage.common import Settings, wait_until
+from DrissionPage.common import Settings
 from DrissionPage.items import ChromiumElement, MixTab
 from imap_tools import AND, MailBox
 from loguru import logger
@@ -196,51 +196,64 @@ class AccountCreator:
 
     def _locate_cf_button(self, tab: MixTab) -> ChromiumElement | None:
         """Finds the CF challenge button in the tab."""
-        logger.info("Looking for CF checkbox.")
+        logger.debug("Looking for CF checkbox.")
 
         for ele in tab.eles("tag:input", timeout=1):
             attrs = ele.attrs
             if not (attrs.get("type") == "hidden" and "turnstile" in attrs.get("name", "")):
                 continue
 
-            logger.info(f"Found turnstile input: {attrs['name']}")
+            logger.debug(f"Found turnstile input: {attrs['name']}")
 
-            container = ele.parent()
-            shadow = container.shadow_root or container.child().shadow_root
-            if not shadow:
-                logger.info("Couldn't access shadow root")
+            try:
+                container = ele.parent()
+                if not container:
+                    logger.debug("Couldn't get container")
+                    continue
+
+                shadow = container.shadow_root or container.child().shadow_root
+                if not shadow:
+                    logger.debug("Couldn't access shadow root")
+                    continue
+
+                iframe = shadow.ele("tag:iframe")
+                if not iframe:
+                    logger.debug("No iframe in shadow root")
+                    continue
+
+                frame = tab.get_frame(iframe)
+                if not frame:
+                    logger.debug("Couldn't get frame context")
+                    continue
+
+                body = frame.ele("tag:body")
+                if body and body.shadow_root:
+                    if checkbox := body.shadow_root.ele("tag:input"):
+                        return checkbox
+            except Exception as e:
+                logger.debug(f"Exception locating CF checkbox: {e}")
                 continue
-
-            iframe = shadow.ele("tag:iframe")
-            if not iframe:
-                logger.info("No iframe in shadow root")
-                continue
-
-            frame = tab.get_frame(iframe)
-            if not frame:
-                logger.info("Couldn't get frame context")
-                continue
-
-            body = frame.ele("tag:body")
-            if body and body.shadow_root:
-                if checkbox := body.shadow_root.ele("tag:input"):
-                    return checkbox
 
         return None
 
-    def _bypass_challenge(self, tab: MixTab, timeout: int) -> bool:
+    def _bypass_challenge(self, tab: MixTab, timeout_seconds: int = 15) -> None:
         """Attempts to bypass the CF challenge by clicking the checkbox."""
         page_title = "Just a moment"
-        if page_title not in tab.title:
-            logger.debug("Not on challenge page.")
-            return True
+        timeout = time.time() + timeout_seconds
 
-        button = self._locate_cf_button(tab)
-        if not button:
-            return False
+        while time.time() < timeout:
+            if page_title not in tab.title:
+                logger.debug("No longer on the challenge page.")
+                return
 
-        button.click()
-        return tab.wait.title_change(page_title, exclude=True, timeout=timeout)
+            button = self._locate_cf_button(tab)
+            if button:
+                button.click()
+                logger.debug("Clicked CF checkbox.")
+
+            time.sleep(0.5)
+
+        raise TimeoutError("Timed out trying to bypass CF challenge.")
 
     def _get_verification_code_imap(
         self, imap_details: models.IMAPDetails, account_email: str, timeout_seconds: int = 30
@@ -450,12 +463,11 @@ class AccountCreator:
                 raise RegistrationError("Failed to get to the account management page.")
             tab.wait.doc_loaded(raise_err=True)
 
-            challenge_timeout_seconds = 10
-            wait_until(
-                self._bypass_challenge,
-                kwargs={"tab": tab, "timeout": challenge_timeout_seconds},
-                timeout=challenge_timeout_seconds,
-            )
+            # Wait to get to the challenge page before we attempt to solve it.
+            while "Just a moment" not in tab.title:
+                time.sleep(0.1)
+
+            self._bypass_challenge(tab)
 
             tab.wait.url_change(self._MANAGEMENT_URL, raise_err=True)
 
