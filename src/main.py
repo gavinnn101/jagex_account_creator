@@ -2,6 +2,7 @@ import json
 import random
 import string
 import sys
+import threading
 import time
 import tomllib
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
@@ -14,6 +15,7 @@ from account_creator import AccountCreator
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 ACCOUNTS_FILE_PATH = SCRIPT_DIR / "accounts.json"
+ACCOUNTS_FILE_LOCK = threading.lock()
 
 
 def generate_username(length: int = 10) -> str:
@@ -30,7 +32,7 @@ def get_account_domain(domains: list[str]) -> str:
     return domains[index]
 
 
-def load_accounts(accounts_file_path: Path) -> list[models.JagexAccount]:
+def _load_accounts(accounts_file_path: Path) -> list[models.JagexAccount]:
     """Loads accounts from file."""
     if accounts_file_path.is_file() and accounts_file_path.stat().st_size > 0:
         with open(accounts_file_path) as f:
@@ -39,7 +41,7 @@ def load_accounts(accounts_file_path: Path) -> list[models.JagexAccount]:
     return []
 
 
-def save_accounts(accounts_file_path: Path, accounts: list[models.JagexAccount]) -> None:
+def _save_accounts(accounts_file_path: Path, accounts: list[models.JagexAccount]) -> None:
     """Saves accounts list to file."""
     raw = [account.model_dump() for account in accounts]
     with open(accounts_file_path, "w") as f:
@@ -48,10 +50,11 @@ def save_accounts(accounts_file_path: Path, accounts: list[models.JagexAccount])
 
 def save_account_to_file(accounts_file_path: Path, account: models.JagexAccount) -> None:
     """Saves created account to accounts file."""
-    logger.debug(f"Saving account: {account.email} to file: {accounts_file_path}")
-    accounts = load_accounts(accounts_file_path=accounts_file_path)
-    accounts.append(account)
-    save_accounts(accounts_file_path=accounts_file_path, accounts=accounts)
+    with ACCOUNTS_FILE_LOCK:
+        logger.debug(f"Saving account: {account.email} to file: {accounts_file_path}")
+        accounts = _load_accounts(accounts_file_path=accounts_file_path)
+        accounts.append(account)
+        _save_accounts(accounts_file_path=accounts_file_path, accounts=accounts)
 
 
 def main():
