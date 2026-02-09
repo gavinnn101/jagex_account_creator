@@ -274,7 +274,9 @@ class AccountCreator:
                 time.sleep(0.1)
         raise RegistrationError("Timed out waiting for registration code.")
 
-    def _get_verification_code_guerrilla_mail(self, account_email: str, timeout_seconds: int = 30):
+    def _get_verification_code_guerrilla_mail(
+        self, account_email: str, timeout_seconds: int = 30
+    ) -> str:
         """Get the verification code for the jagex account from a temp Guerrilla Mail email."""
         from datetime import timedelta
 
