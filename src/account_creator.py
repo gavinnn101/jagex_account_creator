@@ -75,6 +75,7 @@ class AccountCreator:
         imap_details: models.IMAPDetails | None = None,
         use_proxy_for_guerrilla_mail: bool = True,
     ) -> None:
+        self.logger = logger.bind(module="AccountCreator")
         self.user_agent = user_agent
         self.enable_dev_tools = enable_dev_tools
         self.use_headless_browser = use_headless_browser
@@ -101,7 +102,7 @@ class AccountCreator:
     def _setup_browser_cache(self, co: ChromiumOptions, run_path: Path) -> None:
         """Copies the primary cache and sets copy for current run."""
         run_number = str(run_path).split("_")[-1]
-        logger.info(f"Creating cache folder for run number: {run_number}")
+        self.logger.info(f"Creating cache folder for run number: {run_number}")
         new_cache_folder = run_path / "cache"
         if self.cache_folder.is_dir():
             with self._CACHE_FOLDER_LOCK:
@@ -131,7 +132,7 @@ class AccountCreator:
         if self.use_headless_browser:
             co.set_argument("--headless")
             if not self.user_agent:
-                logger.warning(
+                self.logger.warning(
                     "Using headless without setting a user agent. This will likely get your session detected."
                 )
         elif self.enable_dev_tools:
@@ -154,20 +155,20 @@ class AccountCreator:
 
     def _find_element(self, tab: MixTab, identifier: str) -> ChromiumElement:
         """Find an element in the tab. Raises ElementNotFoundError."""
-        logger.debug(f"Looking for element to click with identifier: {identifier}")
+        self.logger.debug(f"Looking for element to click with identifier: {identifier}")
 
-        logger.debug("Waiting for element to be loaded")
+        self.logger.debug("Waiting for element to be loaded")
         if not tab.wait.eles_loaded(identifier):
             raise ElementNotFoundError(
                 f"Couldn't find loaded element with identifier: {identifier}"
             )
 
-        logger.debug("Getting element")
+        self.logger.debug("Getting element")
         element = tab.ele(identifier)
         if not element:
             raise ElementNotFoundError(f"Failed to get element: {identifier}")
 
-        logger.debug("Waiting for element to be displayed")
+        self.logger.debug("Waiting for element to be displayed")
         try:
             element.wait.displayed()
         except TimeoutError as e:
@@ -175,13 +176,13 @@ class AccountCreator:
                 f"Timed out waiting for element to be displayed: {identifier}"
             ) from e
 
-        logger.debug("Returning element")
+        self.logger.debug("Returning element")
         return element
 
     def _click_element(self, tab: MixTab, identifier: str) -> ChromiumElement:
         """Left click the provided element."""
         element = self._find_element(tab, identifier)
-        logger.debug("Clicking element")
+        self.logger.debug("Clicking element")
         tab.actions.move_to(element).click()
         return element
 
@@ -190,40 +191,40 @@ class AccountCreator:
     ) -> ChromiumElement:
         """Click the provided element and then type the text."""
         element = self._find_element(tab, identifier)
-        logger.debug(f"Clicking element and then typing: {text}")
+        self.logger.debug(f"Clicking element and then typing: {text}")
         tab.actions.move_to(element).click().type(text, interval=typing_interval)
         return element
 
     def _locate_cf_button(self, tab: MixTab) -> ChromiumElement | None:
         """Finds the CF challenge button in the tab."""
-        logger.debug("Looking for CF checkbox.")
+        self.logger.debug("Looking for CF checkbox.")
 
         for ele in tab.eles("tag:input", timeout=1):
             attrs = ele.attrs
             if not (attrs.get("type") == "hidden" and "turnstile" in attrs.get("name", "")):
                 continue
 
-            logger.debug(f"Found turnstile input: {attrs['name']}")
+            self.logger.debug(f"Found turnstile input: {attrs['name']}")
 
             try:
                 container = ele.parent()
                 if not container:
-                    logger.debug("Couldn't get container")
+                    self.logger.debug("Couldn't get container")
                     continue
 
                 shadow = container.shadow_root or container.child().shadow_root
                 if not shadow:
-                    logger.debug("Couldn't access shadow root")
+                    self.logger.debug("Couldn't access shadow root")
                     continue
 
                 iframe = shadow.ele("tag:iframe")
                 if not iframe:
-                    logger.debug("No iframe in shadow root")
+                    self.logger.debug("No iframe in shadow root")
                     continue
 
                 frame = tab.get_frame(iframe)
                 if not frame:
-                    logger.debug("Couldn't get frame context")
+                    self.logger.debug("Couldn't get frame context")
                     continue
 
                 body = frame.ele("tag:body")
@@ -231,7 +232,7 @@ class AccountCreator:
                     if checkbox := body.shadow_root.ele("tag:input"):
                         return checkbox
             except Exception as e:
-                logger.debug(f"Exception locating CF checkbox: {e}")
+                self.logger.debug(f"Exception locating CF checkbox: {e}")
                 continue
 
         return None
@@ -243,13 +244,13 @@ class AccountCreator:
 
         while time.time() < timeout:
             if page_title not in tab.title:
-                logger.debug("No longer on the challenge page.")
+                self.logger.debug("No longer on the challenge page.")
                 return
 
             button = self._locate_cf_button(tab)
             if button:
                 button.click()
-                logger.debug("Clicked CF checkbox.")
+                self.logger.debug("Clicked CF checkbox.")
 
             time.sleep(0.5)
 
@@ -301,20 +302,20 @@ class AccountCreator:
             else None,
         )
 
-        logger.debug("Getting account verification code via Guerrilla mail.")
+        self.logger.debug("Getting account verification code via Guerrilla mail.")
 
         get_email_resp = rnet_client.get(
             url=self._GUERRILLA_MAIL_API_URL,
             query={"f": "get_email_address", "lang": "en"},
         )
-        logger.debug(f"Response: {get_email_resp}")
+        self.logger.debug(f"Response: {get_email_resp}")
         get_email_resp.raise_for_status()
 
         sid_token = get_email_resp.json()["sid_token"]
 
         account_username = account_email.split("@")[0]
 
-        logger.debug(f"Sending request to set Guerrilla Mail email to: {account_username}.")
+        self.logger.debug(f"Sending request to set Guerrilla Mail email to: {account_username}.")
         set_email_resp = rnet_client.get(
             url=self._GUERRILLA_MAIL_API_URL,
             query={
@@ -324,7 +325,7 @@ class AccountCreator:
                 "sid_token": sid_token,
             },
         )
-        logger.debug(f"Response: {set_email_resp}")
+        self.logger.debug(f"Response: {set_email_resp}")
         set_email_resp.raise_for_status()
 
         if account_username not in set_email_resp.json()["email_addr"]:
@@ -332,12 +333,12 @@ class AccountCreator:
 
         timeout = time.time() + timeout_seconds
         while time.time() < timeout:
-            logger.debug("Sending request to check our email.")
+            self.logger.debug("Sending request to check our email.")
             check_email_resp = rnet_client.get(
                 url=self._GUERRILLA_MAIL_API_URL,
                 query={"f": "check_email", "sid_token": sid_token, "seq": 0},
             )
-            logger.debug(f"Response: {check_email_resp}")
+            self.logger.debug(f"Response: {check_email_resp}")
             check_email_resp.raise_for_status()
 
             for email in check_email_resp.json()["list"]:
@@ -352,7 +353,7 @@ class AccountCreator:
         """Update primary cache if run cache is significantly different."""
         with self._CACHE_FOLDER_LOCK:
             if not self.cache_folder.is_dir():
-                logger.debug("Primary cache doesn't exist. Copying run cache.")
+                self.logger.debug("Primary cache doesn't exist. Copying run cache.")
                 shutil.copytree(run_cache_path, self.cache_folder)
                 return
 
@@ -364,12 +365,12 @@ class AccountCreator:
             else:
                 size_diff_percent = (run_size - original_size) / original_size * 100
 
-            logger.debug(
+            self.logger.debug(
                 f"Cache sizes - run: {run_size}, original: {original_size}, diff: {size_diff_percent:.1f}%"
             )
 
             if size_diff_percent >= self.cache_update_threshold:
-                logger.debug("Updating primary cache.")
+                self.logger.debug("Updating primary cache.")
                 shutil.rmtree(self.cache_folder)
                 shutil.copytree(run_cache_path, self.cache_folder)
 
@@ -398,7 +399,7 @@ class AccountCreator:
         tab.run_cdp("Network.setBlockedURLs", urls=self._URLS_TO_BLOCK)
 
         browser_ip = self._get_browser_ip(tab)
-        logger.info(f"Browser IP: {browser_ip}")
+        self.logger.info(f"Browser IP: {browser_ip}")
 
         jagex_account = models.JagexAccount(
             email=self.account_email,
@@ -412,7 +413,7 @@ class AccountCreator:
             proxy=self.proxy,
         )
 
-        logger.debug(f"Going to registration url: {self._REGISTRATION_URL}")
+        self.logger.debug(f"Going to registration url: {self._REGISTRATION_URL}")
         if not tab.get(self._REGISTRATION_URL):
             raise RegistrationError(f"Failed to go to url: {self._REGISTRATION_URL}")
         tab.wait.title_change(text="Create a Jagex account", raise_err=True)
@@ -460,7 +461,7 @@ class AccountCreator:
         tab.wait.title_change("Registration completed", raise_err=True)
 
         if self.set_2fa:
-            logger.debug("Going to management page")
+            self.logger.debug("Going to management page")
             if not tab.get(self._MANAGEMENT_URL):
                 raise RegistrationError("Failed to get to the account management page.")
             tab.wait.doc_loaded(raise_err=True)
@@ -478,11 +479,11 @@ class AccountCreator:
 
             setup_key_element = self._find_element(tab, "@id:authentication-setup-secret-key")
             setup_key = setup_key_element.text
-            logger.debug(f"Extracted 2fa setup key: {setup_key}")
+            self.logger.debug(f"Extracted 2fa setup key: {setup_key}")
 
             self._click_element(tab, "@data-testid:authenticator-setup-qr-button")
             totp = pyotp.TOTP(setup_key).now()
-            logger.debug(f"Generated TOTP code: {totp}")
+            self.logger.debug(f"Generated TOTP code: {totp}")
 
             self._click_and_type(tab, "@id:authentication-setup-verification-code", totp)
             self._click_element(tab, "@data-testid:authentication-setup-qr-code-submit-button")
@@ -491,11 +492,11 @@ class AccountCreator:
                 tab, "@id:authentication-setup-complete-codes"
             )
             backup_codes = backup_codes_element.text.split("\n")
-            logger.debug(f"Got 2fa backup codes: {backup_codes}")
+            self.logger.debug(f"Got 2fa backup codes: {backup_codes}")
 
             jagex_account.tfa = models.TwoFactorAuth(setup_key=setup_key, backup_codes=backup_codes)
 
-        logger.info("Registration finished")
+        self.logger.info("Registration finished")
         return jagex_account
 
     def register_account(self) -> models.JagexAccount:

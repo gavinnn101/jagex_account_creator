@@ -5,7 +5,6 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import suppress
 from dataclasses import dataclass, field
-from typing import BinaryIO
 from urllib.parse import urlparse
 
 from loguru import logger
@@ -71,6 +70,7 @@ class HttpResponse:
 
 class GProxy:
     __slots__ = (
+        "logger",
         "ip",
         "port",
         "upstream_proxy",
@@ -96,6 +96,7 @@ class GProxy:
         read_timeout: int = 30,
         max_threads: int = 100,
     ) -> None:
+        self.logger = logger.bind(module="GProxy")
         self.ip = ip
         self.port = port if port is not None else self._find_free_port()
         self._address = (self.ip, self.port)
@@ -206,7 +207,7 @@ class GProxy:
     def _establish_proxy_tunnel(
         self, destination_socket: socket.socket, host: str, port: int
     ) -> bool:
-        logger.debug("Establishing proxy tunnel for https connection.")
+        self.logger.debug("Establishing proxy tunnel for https connection.")
 
         headers = [Header(name="Host", value=f"{host}:{port}")]
         if self.upstream_proxy_auth_header:
@@ -219,13 +220,13 @@ class GProxy:
             headers=tuple(headers),
         )
 
-        logger.debug(f"Sending request header: {bytes(request)}")
+        self.logger.debug(f"Sending request header: {bytes(request)}")
         destination_socket.sendall(bytes(request))
 
         raw_response = self._read_until_delimiter(destination_socket)
         response = self._parse_response(raw_response)
 
-        logger.debug(f"Got response: {response}")
+        self.logger.debug(f"Got response: {response}")
         return response.is_success
 
     def _tunnel_data(
@@ -235,7 +236,7 @@ class GProxy:
         initial_client_data: bytes = b"",
     ) -> None:
         """Tunnel data bidirectionally between sockets."""
-        logger.debug("Tunneling data between sockets.")
+        self.logger.debug("Tunneling data between sockets.")
 
         if initial_client_data:
             destination_socket.sendall(initial_client_data)
@@ -256,7 +257,7 @@ class GProxy:
             events = sel.select(timeout=self.tunnel_timeout)
 
             if not events:
-                logger.debug("Tunnel idle timeout reached")
+                self.logger.debug("Tunnel idle timeout reached")
                 return
 
             for key, _ in events:
@@ -280,19 +281,19 @@ class GProxy:
         return parsed_url.hostname, parsed_url.port or DEFAULT_HTTP_PORT
 
     def _handle_request(self, client_socket: socket.socket) -> None:
-        logger.debug(f"Handling socket: {client_socket}")
+        self.logger.debug(f"Handling socket: {client_socket}")
 
         client_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         client_socket.settimeout(self.read_timeout)
 
         raw_data = self._read_until_delimiter(client_socket)
         request, body_remainder = self._parse_request(raw_data)
-        logger.debug(f"Got request: {request}")
+        self.logger.debug(f"Got request: {request}")
 
         host, port = self._parse_destination(request)
 
         if not self._is_host_allowed(host):
-            logger.debug(f"Blocked request to host: {host}")
+            self.logger.debug(f"Blocked request to host: {host}")
             return
 
         destination_socket = self._connect_to_destination(host, port)
@@ -342,7 +343,7 @@ class GProxy:
     ) -> bool:
         if self.upstream_proxy:
             if not self._establish_proxy_tunnel(destination_socket, host, port):
-                logger.error("Failed to establish proxy tunnel!")
+                self.logger.error("Failed to establish proxy tunnel!")
                 return False
 
         response = HttpResponse(
@@ -350,7 +351,7 @@ class GProxy:
             status_code=200,
             status_reason="Connection Established",
         )
-        logger.debug(f"Sending connection established response: {response}")
+        self.logger.debug(f"Sending connection established response: {response}")
         client_socket.sendall(bytes(response))
         return True
 
@@ -372,10 +373,10 @@ class GProxy:
         except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError, OSError):
             pass
         except TimeoutError:
-            logger.debug("Socket read timeout")
+            self.logger.debug("Socket read timeout")
         except Exception as e:
             if not self._stopped.is_set():
-                logger.debug(f"Request handler error: {e}")
+                self.logger.debug(f"Request handler error: {e}")
         finally:
             with suppress(Exception):
                 client_socket.close()
@@ -393,7 +394,7 @@ class GProxy:
                 self._executor.submit(self._safe_handle_request, client_socket)
 
     def start(self) -> None:
-        logger.info(f"Starting proxy server at {self.ip}:{self.port}")
+        self.logger.info(f"Starting proxy server at {self.ip}:{self.port}")
         self._stopped.clear()
 
         if self._server_socket.fileno() == -1:
@@ -403,7 +404,7 @@ class GProxy:
         threading.Thread(target=self._handle_requests, daemon=True).start()
 
     def stop(self) -> None:
-        logger.info(f"Stopping proxy server at {self.ip}:{self.port}")
+        self.logger.info(f"Stopping proxy server at {self.ip}:{self.port}")
         self._stopped.set()
         self._server_socket.close()
         self._executor.shutdown(wait=False, cancel_futures=True)

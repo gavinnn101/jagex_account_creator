@@ -6,6 +6,7 @@ import time
 import tomllib
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from pathlib import Path
+from typing import Any
 
 from loguru import logger
 
@@ -39,12 +40,34 @@ def save_account_to_file(accounts_file_path: Path, account: models.JagexAccount)
             f.write(account.model_dump_json() + "\n")
 
 
+def setup_logging(config: dict[str, Any]) -> None:
+    """Setup the logger to filter logs based on the different module log_levels in the config."""
+    log_levels = {
+        "AccountCreator": config["account_creator"]["log_level"],
+        "GProxy": config["gproxy"]["log_level"],
+    }
+    logger.remove()
+
+    for module, level in log_levels.items():
+        logger.add(
+            sys.stderr,
+            level=level,
+            filter=lambda record, name=module: record["extra"].get("module") == name,
+        )
+
+    configured_modules = set(log_levels.keys())
+    logger.add(
+        sys.stderr,
+        level="INFO",
+        filter=lambda record: record["extra"].get("module") not in configured_modules,
+    )
+
+
 def main():
     with open(SCRIPT_DIR / "config.toml", "rb") as f:
         config = tomllib.load(f)
 
-    logger.remove()
-    logger.add(sys.stderr, level=config["default"]["log_level"])
+    setup_logging(config=config)
 
     logger.info("Starting account creator.")
 
@@ -70,10 +93,10 @@ def main():
 
     proxies: list[models.Proxy] = [models.Proxy(**p) for p in config["proxies"]["list"]]
 
-    with ThreadPoolExecutor(max_workers=config["default"]["threads"]) as executor:
+    with ThreadPoolExecutor(max_workers=config["account_creator"]["threads"]) as executor:
         future_to_email: dict[Future, str] = {}
 
-        for i in range(config["default"]["accounts_to_create"]):
+        for i in range(config["account_creator"]["accounts_to_create"]):
             account_username = generate_username()
             account_domain = get_account_domain(domains=domains)
             account_email = f"{account_username}@{account_domain}"
