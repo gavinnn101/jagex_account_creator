@@ -6,14 +6,16 @@ Utilizes the Python DrissionPage library to automate a Chrome browser and sign u
 * Takes ~30 seconds per account with 2FA enabled.
 * Multi-threaded - You can make as many accounts as you want in 15-30 seconds as long as you have computer resources / proxies to handle the threads!
 * Supports running the browser in headless mode.
-* ~10MB of data usage pre-cache, 900kb of data usage post-cache!
+* ~10MB of data usage pre-cache, 900KB of data usage post-cache!
 * * Sets up a local proxy server that intercepts all of the Chrome traffic and blocks requests that aren't required.
-* * Elements that can't be blocked are saved to a cache that is shared by all runs and frequently updated.
+* * Elements that can't be blocked are saved to a common Chrome cache.
+* * * Each account creation copies the cache to use.
+* * * If the new run's cache size is greater than the difference set in the config, the common cache will be updated.
 * Two options for account email:
 * * Utilize a catch-all email via imap.
 * * Utilize the Guerrilla Mail temp email service.
 * Supports enabling TOTP 2FA on created accounts.
-* Each successful account creation appends the account and all of the registration info used to `accounts.json`.
+* Each successful account creation appends the account details to `accounts.jsonl`.
 
 ## Notable not-features
 * If for some reason the creator fails during a run, it likely won't cleanup the temporary run folder it creates.
