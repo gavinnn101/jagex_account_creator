@@ -6,7 +6,7 @@ class Proxy(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     ip: str
-    port: str
+    port: int
     username: str | None = None
     password: str | None = None
 
