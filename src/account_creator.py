@@ -121,6 +121,7 @@ class AccountCreator:
         co.set_argument(
             "--disable-features=OptimizationGuideModelDownloading,OptimizationHintsFetching,OptimizationTargetPrediction,OptimizationHints"
         )
+        co.set_argument("--accept-lang=en-US")
 
         self._setup_browser_cache(co, run_path=run_path)
 
