@@ -149,14 +149,17 @@ class GProxy:
         """Read from socket until we hit the end-of-headers delimiter."""
         data = bytearray()
         end_marker = END_OF_HEADER_DELIMITER * 2
+        marker_len = len(end_marker)
 
-        while end_marker not in data:
+        while True:
             chunk = sock.recv(self.buffer_size)
             if not chunk:
                 raise ConnectionError("Connection closed while reading headers")
             data.extend(chunk)
 
-        return bytes(data)
+            search_start = max(0, len(data) - len(chunk) - marker_len + 1)
+            if end_marker in data[search_start:]:
+                return bytes(data)
 
     def _parse_request(self, raw_data: bytes) -> tuple[HttpRequest, bytes]:
         """Parse request and return any trailing body data."""
