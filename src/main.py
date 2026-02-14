@@ -91,7 +91,9 @@ def main():
         logger.error("Must use either imap or guerrilla mail.")
         return
 
-    proxies: list[models.Proxy] = [models.Proxy(**p) for p in config["proxies"]["list"]]
+    if config["proxies"]["enabled"]:
+        proxies: list[models.Proxy] = [models.Proxy(**p) for p in config["proxies"]["list"]]
+        proxy_start_index = random.randint(0, len(proxies) - 1)
 
     with ThreadPoolExecutor(max_workers=config["account_creator"]["threads"]) as executor:
         future_to_email: dict[Future, str] = {}
@@ -101,8 +103,8 @@ def main():
             account_domain = get_account_domain(domains=domains)
             account_email = f"{account_username}@{account_domain}"
 
-            if config["proxies"]["enabled"]:
-                proxy = proxies[i % len(proxies)]
+            if config["proxies"]["enabled"] and proxies:
+                proxy = proxies[(proxy_start_index + i) % len(proxies)]
             else:
                 proxy = None
 
