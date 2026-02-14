@@ -131,8 +131,11 @@ def main():
             except Exception as e:
                 logger.error(f"Account creation for account: {email} failed: {e}")
             else:
+                total_data_used_mb = (
+                    result.transfer_stats.bytes_sent + result.transfer_stats.bytes_received
+                ) / 1_048_576
                 logger.success(
-                    f"Account created: {result.jagex_account}. Total data used: {(result.transfer_stats.bytes_sent + result.transfer_stats.bytes_received) / 1_048_576:.2f}MB. Time taken: {result.duration}"
+                    f"Account created: {result.jagex_account}. Total data used: {total_data_used_mb:.2f}MB. Time taken: {result.duration}"
                 )
                 save_account_to_file(
                     accounts_file_path=ACCOUNTS_FILE_PATH, account=result.jagex_account
