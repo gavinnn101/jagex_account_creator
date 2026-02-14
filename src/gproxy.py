@@ -158,7 +158,7 @@ class GProxy:
             data.extend(chunk)
 
             search_start = max(0, len(data) - len(chunk) - marker_len + 1)
-            if end_marker in data[search_start:]:
+            if data.find(end_marker, search_start) != -1:
                 return bytes(data)
 
     def _parse_request(self, raw_data: bytes) -> tuple[HttpRequest, bytes]:
