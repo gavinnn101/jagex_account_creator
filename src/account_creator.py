@@ -3,8 +3,8 @@ import re
 import shutil
 import threading
 import time
+from datetime import timedelta
 from pathlib import Path
-from typing import Any
 
 import pyotp
 from DrissionPage import Chromium, ChromiumOptions
@@ -242,9 +242,9 @@ class AccountCreator:
     def _bypass_challenge(self, tab: MixTab, timeout_seconds: int = 15) -> None:
         """Attempts to bypass the CF challenge by clicking the checkbox."""
         page_title = "Just a moment"
-        timeout = time.time() + timeout_seconds
+        timeout = time.monotonic() + timeout_seconds
 
-        while time.time() < timeout:
+        while time.monotonic() < timeout:
             if page_title not in tab.title:
                 self.logger.debug("No longer on the challenge page.")
                 return
@@ -267,8 +267,8 @@ class AccountCreator:
         with MailBox(imap_details.ip, imap_details.port).login(
             imap_details.email, imap_details.password
         ) as mailbox:
-            timeout = time.time() + timeout_seconds
-            while time.time() < timeout:
+            timeout = time.monotonic() + timeout_seconds
+            while time.monotonic() < timeout:
                 emails = mailbox.fetch(email_query)
                 for email in emails:
                     match = re.search(code_regex, email.html)
@@ -333,8 +333,8 @@ class AccountCreator:
         if account_username not in set_email_resp.json()["email_addr"]:
             raise RegistrationError("Failed to set account email on Guerrilla Mail.")
 
-        timeout = time.time() + timeout_seconds
-        while time.time() < timeout:
+        timeout = time.monotonic() + timeout_seconds
+        while time.monotonic() < timeout:
             self.logger.debug("Sending request to check our email.")
             check_email_resp = rnet_client.get(
                 url=self._GUERRILLA_MAIL_API_URL,
@@ -503,6 +503,7 @@ class AccountCreator:
 
     def register_account(self) -> models.AccountRegistrationResult:
         """Wrapper function to fully register a Jagex account."""
+        start_time = time.monotonic()
         run_number = random.randint(10_000, 65_535)
         run_path = SCRIPT_DIR / f"run_{run_number}"
         run_path.mkdir()
@@ -517,7 +518,9 @@ class AccountCreator:
             account = self._handle_registration(browser=browser)
             success = True
             return models.AccountRegistrationResult(
-                jagex_account=account, transfer_stats=gproxy.transfer_stats
+                jagex_account=account,
+                transfer_stats=gproxy.transfer_stats,
+                duration=timedelta(seconds=time.monotonic() - start_time),
             )
         finally:
             self._cleanup(

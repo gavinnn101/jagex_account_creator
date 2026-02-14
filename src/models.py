@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import timedelta
 
 import pyotp
 from pydantic import BaseModel, ConfigDict
@@ -64,3 +65,4 @@ class TransferStats:
 class AccountRegistrationResult:
     jagex_account: JagexAccount
     transfer_stats: TransferStats
+    duration: timedelta
