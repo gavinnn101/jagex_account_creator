@@ -95,10 +95,15 @@ def main():
         proxies: list[models.Proxy] = [models.Proxy(**p) for p in config["proxies"]["list"]]
         proxy_start_index = random.randint(0, len(proxies) - 1)
 
+    accounts_to_create = config["account_creator"]["accounts_to_create"]
+    accounts_created = 0
+    account_creations_failed = 0
+    logger.info(f"Creating {accounts_to_create} accounts.")
+
     with ThreadPoolExecutor(max_workers=config["account_creator"]["threads"]) as executor:
         future_to_email: dict[Future, str] = {}
 
-        for i in range(config["account_creator"]["accounts_to_create"]):
+        for i in range(accounts_to_create):
             account_username = generate_username()
             account_domain = get_account_domain(domains=domains)
             account_email = f"{account_username}@{account_domain}"
@@ -132,6 +137,7 @@ def main():
                 result: models.AccountRegistrationResult = future.result()
             except Exception as e:
                 logger.exception(f"Account creation for account: {email} failed: {e}")
+                account_creations_failed += 1
             else:
                 total_data_used_mb = (
                     result.transfer_stats.bytes_sent + result.transfer_stats.bytes_received
@@ -142,6 +148,15 @@ def main():
                 save_account_to_file(
                     accounts_file_path=ACCOUNTS_FILE_PATH, account=result.jagex_account
                 )
+                accounts_created += 1
+                logger.info(f"Created {accounts_created}/{accounts_to_create} accounts.")
+
+        logger.info("Finished creating accounts.")
+        logger.info(
+            f"Total account creation attempts: {accounts_created + account_creations_failed}"
+        )
+        logger.info(f"Successful creations: {accounts_created}")
+        logger.info(f"Failed creations: {account_creations_failed}")
 
 
 if __name__ == "__main__":
