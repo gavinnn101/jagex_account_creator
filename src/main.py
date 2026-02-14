@@ -131,7 +131,7 @@ def main():
             try:
                 result: models.AccountRegistrationResult = future.result()
             except Exception as e:
-                logger.error(f"Account creation for account: {email} failed: {e}")
+                logger.exception(f"Account creation for account: {email} failed: {e}")
             else:
                 total_data_used_mb = (
                     result.transfer_stats.bytes_sent + result.transfer_stats.bytes_received
