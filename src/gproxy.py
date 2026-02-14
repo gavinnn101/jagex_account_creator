@@ -83,6 +83,8 @@ class GProxy:
         "_server_socket",
         "_executor",
         "_stopped",
+        "_stats_lock",
+        "transfer_stats",
     )
 
     def __init__(
@@ -109,6 +111,9 @@ class GProxy:
         self.buffer_size = buffer_size
         self.tunnel_timeout = tunnel_timeout
         self.read_timeout = read_timeout
+
+        self.transfer_stats = models.TransferStats()
+        self._stats_lock = threading.Lock()
 
         self._executor = ThreadPoolExecutor(max_workers=max_threads)
         self._stopped = threading.Event()
@@ -234,12 +239,15 @@ class GProxy:
         client_socket: socket.socket,
         destination_socket: socket.socket,
         initial_client_data: bytes = b"",
-    ) -> None:
+    ) -> models.TransferStats:
         """Tunnel data bidirectionally between sockets."""
         self.logger.debug("Tunneling data between sockets.")
 
+        stats = models.TransferStats()
+
         if initial_client_data:
             destination_socket.sendall(initial_client_data)
+            stats.bytes_sent += len(initial_client_data)
 
         client_socket.setblocking(False)
         destination_socket.setblocking(False)
@@ -248,17 +256,23 @@ class GProxy:
         try:
             sel.register(client_socket, selectors.EVENT_READ, destination_socket)
             sel.register(destination_socket, selectors.EVENT_READ, client_socket)
-            self._run_tunnel_loop(sel)
+            stats += self._run_tunnel_loop(sel, client_socket)
         finally:
             sel.close()
 
-    def _run_tunnel_loop(self, sel: selectors.DefaultSelector) -> None:
+        return stats
+
+    def _run_tunnel_loop(
+        self, sel: selectors.DefaultSelector, client_socket: socket.socket
+    ) -> models.TransferStats:
+        stats = models.TransferStats()
+
         while True:
             events = sel.select(timeout=self.tunnel_timeout)
 
             if not events:
                 self.logger.debug("Tunnel idle timeout reached")
-                return
+                return stats
 
             for key, _ in events:
                 src_socket: socket.socket = key.fileobj
@@ -267,8 +281,13 @@ class GProxy:
                 try:
                     data = src_socket.recv(self.buffer_size)
                     if not data:
-                        return
+                        return stats
                     dst_socket.sendall(data)
+
+                    if src_socket is client_socket:
+                        stats.bytes_sent += len(data)
+                    else:
+                        stats.bytes_received += len(data)
                 except (BlockingIOError, InterruptedError):
                     continue
 
@@ -326,13 +345,18 @@ class GProxy:
         port: int,
         body_remainder: bytes = b"",
     ) -> None:
+        stats = models.TransferStats()
+
         if request.is_https:
             if not self._handle_https_connection(client_socket, destination_socket, host, port):
                 return
-            self._tunnel_data(client_socket, destination_socket, body_remainder)
+            stats += self._tunnel_data(client_socket, destination_socket, body_remainder)
         else:
-            self._handle_http_connection(destination_socket, request, body_remainder)
-            self._tunnel_data(client_socket, destination_socket)
+            stats += self._handle_http_connection(destination_socket, request, body_remainder)
+            stats += self._tunnel_data(client_socket, destination_socket)
+
+        with self._stats_lock:
+            self.transfer_stats += stats
 
     def _handle_https_connection(
         self,
@@ -360,12 +384,14 @@ class GProxy:
         destination_socket: socket.socket,
         request: HttpRequest,
         body_remainder: bytes = b"",
-    ) -> None:
+    ) -> models.TransferStats:
         """Forward HTTP request with headers and any buffered body data."""
         if self.upstream_proxy_auth_header:
             request = request.with_header(self.upstream_proxy_auth_header)
 
-        destination_socket.sendall(bytes(request) + body_remainder)
+        payload = bytes(request) + body_remainder
+        destination_socket.sendall(payload)
+        return models.TransferStats(bytes_sent=len(payload))
 
     def _safe_handle_request(self, client_socket: socket.socket) -> None:
         try:

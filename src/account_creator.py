@@ -4,6 +4,7 @@ import shutil
 import threading
 import time
 from pathlib import Path
+from typing import Any
 
 import pyotp
 from DrissionPage import Chromium, ChromiumOptions
@@ -500,7 +501,7 @@ class AccountCreator:
         self.logger.info("Registration finished")
         return jagex_account
 
-    def register_account(self) -> models.JagexAccount:
+    def register_account(self) -> models.AccountRegistrationResult:
         """Wrapper function to fully register a Jagex account."""
         run_number = random.randint(10_000, 65_535)
         run_path = SCRIPT_DIR / f"run_{run_number}"
@@ -515,7 +516,9 @@ class AccountCreator:
         try:
             account = self._handle_registration(browser=browser)
             success = True
-            return account
+            return models.AccountRegistrationResult(
+                jagex_account=account, transfer_stats=gproxy.transfer_stats
+            )
         finally:
             self._cleanup(
                 run_path=run_path, browser=browser, gproxy=gproxy, update_primary_cache=success

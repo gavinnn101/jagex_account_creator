@@ -127,12 +127,16 @@ def main():
         for future in as_completed(future_to_email):
             email = future_to_email[future]
             try:
-                result = future.result()
+                result: models.AccountRegistrationResult = future.result()
             except Exception as e:
                 logger.error(f"Account creation for account: {email} failed: {e}")
             else:
-                logger.success(f"Account created: {result}")
-                save_account_to_file(accounts_file_path=ACCOUNTS_FILE_PATH, account=result)
+                logger.success(
+                    f"Account created: {result}. Total data used: {(result.transfer_stats.bytes_sent + result.transfer_stats.bytes_received) / 1_048_576:.2f}MB"
+                )
+                save_account_to_file(
+                    accounts_file_path=ACCOUNTS_FILE_PATH, account=result.jagex_account
+                )
 
 
 if __name__ == "__main__":
