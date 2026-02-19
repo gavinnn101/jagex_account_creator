@@ -291,7 +291,7 @@ class AccountCreator:
         cookie_jar = rnet.Jar()
         rnet_client = Client(
             emulation=rnet.EmulationOption(
-                emulation=rnet.Emulation.Chrome143,
+                emulation=rnet.Emulation.Chrome144,
                 emulation_os=rnet.EmulationOS.Windows,
             ),
             user_agent=self.user_agent,
