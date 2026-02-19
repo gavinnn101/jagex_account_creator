@@ -9,11 +9,12 @@ from typing import Any
 
 from loguru import logger
 
-import models
-import utils
-from account_creator import AccountCreator
+from jagex_account_creator.account_creator import AccountCreator
+from jagex_account_creator import models, utils
 
 SCRIPT_DIR = Path(__file__).resolve().parent
+CONFIG_PATH = SCRIPT_DIR / "config.toml"
+
 ACCOUNTS_FILE_PATH = SCRIPT_DIR / "accounts.jsonl"
 ACCOUNTS_FILE_LOCK = threading.Lock()
 
@@ -42,7 +43,7 @@ def setup_logging(config: dict[str, Any]) -> None:
 
 
 def main():
-    with open(SCRIPT_DIR / "config.toml", "rb") as f:
+    with open(CONFIG_PATH, "rb") as f:
         config = tomllib.load(f)
 
     setup_logging(config=config)
@@ -71,6 +72,7 @@ def main():
 
     if config["proxies"]["enabled"]:
         proxies: list[models.Proxy] = [models.Proxy(**p) for p in config["proxies"]["list"]]
+        # Start at a random proxy index so we don't abuse the first proxy in the list.
         proxy_start_index = random.randint(0, len(proxies) - 1)
 
     accounts_to_create = config["account_creator"]["accounts_to_create"]

@@ -13,11 +13,9 @@ from DrissionPage.items import ChromiumElement, MixTab
 from imap_tools import AND, MailBox
 from loguru import logger
 
-import models
-from gproxy import GProxy
-
-SCRIPT_DIR = Path(__file__).resolve().parent
-
+from . import models
+from .gproxy import GProxy
+import platformdirs
 
 class ElementNotFoundError(Exception):
     """Raised when a required element cannot be found."""
@@ -32,7 +30,7 @@ class RegistrationError(Exception):
 
 
 class AccountCreator:
-    _CACHE_FOLDER_LOCK = threading.Lock()
+    _BROWSER_CACHE_FOLDER_LOCK = threading.Lock()
 
     _URLS_TO_BLOCK = [
         ".ico",
@@ -62,6 +60,8 @@ class AccountCreator:
 
     _GUERRILLA_MAIL_API_URL = "https://api.guerrillamail.com/ajax.php"
 
+    _SCRIPT_CACHE_PATH = platformdirs.user_cache_path(appname="jagex_account_creator", ensure_exists=True)
+
     def __init__(
         self,
         user_agent: str,
@@ -82,8 +82,10 @@ class AccountCreator:
         self.use_headless_browser = use_headless_browser
         self.element_wait_timeout = element_wait_timeout
 
+        self.browser_cache_folder = self._SCRIPT_CACHE_PATH / "primary_browser_cache"
+        if not self.browser_cache_folder.is_dir():
+            self.browser_cache_folder.mkdir()
         self.cache_update_threshold = cache_update_threshold
-        self.cache_folder = SCRIPT_DIR / "cache"
 
         self.proxy = proxy
         self.account_email = account_email
@@ -105,9 +107,9 @@ class AccountCreator:
         run_number = str(run_path).split("_")[-1]
         self.logger.info(f"Creating cache folder for run number: {run_number}")
         new_cache_folder = run_path / "cache"
-        if self.cache_folder.is_dir():
-            with self._CACHE_FOLDER_LOCK:
-                shutil.copytree(self.cache_folder, new_cache_folder)
+        if self.browser_cache_folder.is_dir():
+            with self._BROWSER_CACHE_FOLDER_LOCK:
+                shutil.copytree(self.browser_cache_folder, new_cache_folder)
         co.set_argument(f"--disk-cache-dir={new_cache_folder}")
 
     def _get_new_browser(self, run_path: Path, ip: str, port: int) -> Chromium:
@@ -353,14 +355,14 @@ class AccountCreator:
 
     def _update_cache(self, run_cache_path: Path) -> None:
         """Update primary cache if run cache is significantly different."""
-        with self._CACHE_FOLDER_LOCK:
-            if not self.cache_folder.is_dir():
+        with self._BROWSER_CACHE_FOLDER_LOCK:
+            if not self.browser_cache_folder.is_dir():
                 self.logger.debug("Primary cache doesn't exist. Copying run cache.")
-                shutil.copytree(run_cache_path, self.cache_folder)
+                shutil.copytree(run_cache_path, self.browser_cache_folder)
                 return
 
             run_size = self._get_dir_size(run_cache_path)
-            original_size = self._get_dir_size(self.cache_folder)
+            original_size = self._get_dir_size(self.browser_cache_folder)
 
             if original_size == 0:
                 size_diff_percent = 100.0 if run_size else 0.0
@@ -373,8 +375,8 @@ class AccountCreator:
 
             if size_diff_percent >= self.cache_update_threshold:
                 self.logger.debug("Updating primary cache.")
-                shutil.rmtree(self.cache_folder)
-                shutil.copytree(run_cache_path, self.cache_folder)
+                shutil.rmtree(self.browser_cache_folder)
+                shutil.copytree(run_cache_path, self.browser_cache_folder)
 
     def _cleanup(
         self,
@@ -505,7 +507,7 @@ class AccountCreator:
         """Wrapper function to fully register a Jagex account."""
         start_time = time.monotonic()
         run_number = random.randint(10_000, 65_535)
-        run_path = SCRIPT_DIR / f"run_{run_number}"
+        run_path = self._SCRIPT_CACHE_PATH / f"run_{run_number}"
         run_path.mkdir()
 
         gproxy = GProxy(upstream_proxy=self.proxy, allowed_hosts=["jagex", "cloudflare", "ipify"])

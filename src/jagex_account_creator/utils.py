@@ -5,7 +5,7 @@ from pathlib import Path
 
 from loguru import logger
 
-import models
+from . import models
 
 
 def generate_username(length: int = 10) -> str:
@@ -27,6 +27,8 @@ def save_account_to_file(
 ) -> None:
     """Saves created account to accounts file."""
     with accounts_file_lock:
+        if not accounts_file_path.parent.exists():
+            accounts_file_path.parent.mkdir(parents=True)
         logger.debug(f"Saving account: {account.email} to file: {accounts_file_path}")
         with open(accounts_file_path, "a") as f:
             f.write(account.model_dump_json() + "\n")

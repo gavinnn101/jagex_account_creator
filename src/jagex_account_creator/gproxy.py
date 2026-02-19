@@ -9,7 +9,7 @@ from urllib.parse import urlparse
 
 from loguru import logger
 
-import models
+from . import models
 
 END_OF_HEADER_DELIMITER = b"\r\n"
 HTTP_VERSION = "HTTP/1.1"
