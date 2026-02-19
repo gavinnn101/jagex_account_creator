@@ -1,5 +1,4 @@
 import random
-import string
 import sys
 import threading
 import time
@@ -11,33 +10,12 @@ from typing import Any
 from loguru import logger
 
 import models
+import utils
 from account_creator import AccountCreator
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 ACCOUNTS_FILE_PATH = SCRIPT_DIR / "accounts.jsonl"
 ACCOUNTS_FILE_LOCK = threading.Lock()
-
-
-def generate_username(length: int = 10) -> str:
-    """Generate a unique string based on length provided."""
-    characters = string.ascii_letters + string.digits
-    username = "".join(random.choice(characters.lower()) for _ in range(length))
-    logger.debug(f"Returning generated username: {username} of length: {length}")
-    return username
-
-
-def get_account_domain(domains: list[str]) -> str:
-    """Get a random domain to use for the account."""
-    index = random.randint(0, len(domains) - 1)
-    return domains[index]
-
-
-def save_account_to_file(accounts_file_path: Path, account: models.JagexAccount) -> None:
-    """Saves created account to accounts file."""
-    with ACCOUNTS_FILE_LOCK:
-        logger.debug(f"Saving account: {account.email} to file: {accounts_file_path}")
-        with open(ACCOUNTS_FILE_PATH, "a") as f:
-            f.write(account.model_dump_json() + "\n")
 
 
 def setup_logging(config: dict[str, Any]) -> None:
@@ -104,8 +82,8 @@ def main():
         future_to_email: dict[Future, str] = {}
 
         for i in range(accounts_to_create):
-            account_username = generate_username()
-            account_domain = get_account_domain(domains=domains)
+            account_username = utils.generate_username()
+            account_domain = utils.get_account_domain(domains=domains)
             account_email = f"{account_username}@{account_domain}"
 
             if config["proxies"]["enabled"] and proxies:
@@ -145,8 +123,10 @@ def main():
                 logger.success(
                     f"Account created: {result.jagex_account}. Total data used: {total_data_used_mb:.2f}MB. Time taken: {result.duration}"
                 )
-                save_account_to_file(
-                    accounts_file_path=ACCOUNTS_FILE_PATH, account=result.jagex_account
+                utils.save_account_to_file(
+                    accounts_file_path=ACCOUNTS_FILE_PATH,
+                    accounts_file_lock=ACCOUNTS_FILE_LOCK,
+                    account=result.jagex_account,
                 )
                 accounts_created += 1
                 logger.info(f"Created {accounts_created}/{accounts_to_create} accounts.")
