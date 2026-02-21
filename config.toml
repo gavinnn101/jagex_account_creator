@@ -6,7 +6,7 @@ log_level = "INFO"
 [browser]
 headless = false
 enable_dev_tools = false
-user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36"
+user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36"
 element_wait_timeout = 30
 cache_update_threshold = 0.3
 
