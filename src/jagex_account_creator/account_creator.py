@@ -6,6 +6,7 @@ import time
 from datetime import timedelta
 from pathlib import Path
 
+import platformdirs
 import pyotp
 from DrissionPage import Chromium, ChromiumOptions
 from DrissionPage.common import Settings
@@ -15,7 +16,7 @@ from loguru import logger
 
 from . import models
 from .gproxy import GProxy
-import platformdirs
+
 
 class ElementNotFoundError(Exception):
     """Raised when a required element cannot be found."""
@@ -60,7 +61,9 @@ class AccountCreator:
 
     _GUERRILLA_MAIL_API_URL = "https://api.guerrillamail.com/ajax.php"
 
-    _SCRIPT_CACHE_PATH = platformdirs.user_cache_path(appname="jagex_account_creator", ensure_exists=True)
+    _SCRIPT_CACHE_PATH = platformdirs.user_cache_path(
+        appname="jagex_account_creator", ensure_exists=True
+    )
 
     def __init__(
         self,
@@ -243,11 +246,16 @@ class AccountCreator:
 
     def _bypass_challenge(self, tab: MixTab, timeout_seconds: int = 15) -> None:
         """Attempts to bypass the CF challenge by clicking the checkbox."""
-        page_title = "Just a moment"
+        challenge_page_title = "Just a moment"
         timeout = time.monotonic() + timeout_seconds
 
+        # Wait to get to the challenge page before we attempt to solve it.
+        logger.debug(f"Waiting for page title: {challenge_page_title}")
+        while challenge_page_title not in tab.title:
+            time.sleep(0.1)
+
         while time.monotonic() < timeout:
-            if page_title not in tab.title:
+            if challenge_page_title not in tab.title:
                 self.logger.debug("No longer on the challenge page.")
                 return
 
@@ -469,10 +477,6 @@ class AccountCreator:
             if not tab.get(self._MANAGEMENT_URL):
                 raise RegistrationError("Failed to get to the account management page.")
             tab.wait.doc_loaded(raise_err=True)
-
-            # Wait to get to the challenge page before we attempt to solve it.
-            while "Just a moment" not in tab.title:
-                time.sleep(0.1)
 
             self._bypass_challenge(tab)
 
