@@ -134,6 +134,7 @@ class AccountCreator:
         co.set_timeouts(self.element_wait_timeout)
 
         if self.user_agent:
+            logger.debug(f"Setting browser user-agent: {self.user_agent}")
             co.set_user_agent(self.user_agent)
 
         if self.use_headless_browser:
