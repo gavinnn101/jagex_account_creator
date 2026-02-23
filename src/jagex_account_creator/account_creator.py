@@ -431,9 +431,10 @@ class AccountCreator:
         self.logger.debug(f"Going to registration url: {self._REGISTRATION_URL}")
         if not tab.get(self._REGISTRATION_URL):
             raise RegistrationError(f"Failed to go to url: {self._REGISTRATION_URL}")
-        tab.wait.title_change(text="Create a Jagex account", raise_err=True)
+        tab.wait.title_change(text="ipify", exclude=True, raise_err=True)
+        tab.wait.doc_loaded()
 
-        if "Sorry, you have been blocked" in tab.html:
+        if any(msg in tab.html for msg in ["Sorry, you have been blocked", "Too many requests"]):
             raise RegistrationError("IP is blocked by CF. Exiting.")
 
         self._click_and_type(tab, "@id:email", jagex_account.email)
