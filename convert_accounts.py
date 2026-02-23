@@ -7,6 +7,8 @@ from jagex_account_creator.models import JagexAccount
 SCRIPT_DIR = Path(__file__).resolve().parent
 
 ACCOUNTS_FILE_PATH = SCRIPT_DIR / "accounts.jsonl"
+
+# This file's contents will be overwritten every run.
 CONVERTED_ACCOUNTS_FILE_PATH = SCRIPT_DIR / "converted_accounts.txt"
 
 
