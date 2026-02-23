@@ -9,8 +9,8 @@ from typing import Any
 
 from loguru import logger
 
-from jagex_account_creator.account_creator import AccountCreator
 from jagex_account_creator import models, utils
+from jagex_account_creator.account_creator import AccountCreator
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 CONFIG_PATH = SCRIPT_DIR / "config.toml"
@@ -84,7 +84,14 @@ def main():
         future_to_email: dict[Future, str] = {}
 
         for i in range(accounts_to_create):
-            account_username = utils.generate_username()
+            account_username = utils.generate_string(
+                include_punctuation=False, length=config["account"]["username_length"]
+            )
+            account_password = config["account"]["password"]
+            if not account_password:
+                account_password = utils.generate_string(
+                    include_punctuation=True, length=config["account"]["random_password_length"]
+                )
             account_domain = utils.get_account_domain(domains=domains)
             account_email = f"{account_username}@{account_domain}"
 
@@ -100,7 +107,7 @@ def main():
                 enable_dev_tools=config["browser"]["enable_dev_tools"],
                 proxy=proxy,
                 account_email=account_email,
-                account_password=config["account"]["password"],
+                account_password=account_password,
                 set_2fa=config["account"]["set_2fa"],
                 use_headless_browser=config["browser"]["headless"],
                 imap_details=imap_details,

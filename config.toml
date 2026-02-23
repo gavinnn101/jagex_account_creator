@@ -41,7 +41,9 @@ password = "myCatchAllEmailPassword"
 domains = []
 
 [account]
-password = "OsrsEnjoyer!123"
+username_length = 12
+password = ""               # `password = ""` uses a randomly generated string.
+random_password_length = 16
 set_2fa = true
 
 [proxies]

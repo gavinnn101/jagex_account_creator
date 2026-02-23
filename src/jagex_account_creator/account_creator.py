@@ -300,7 +300,7 @@ class AccountCreator:
         cookie_jar = rnet.Jar()
         rnet_client = Client(
             emulation=rnet.EmulationOption(
-                emulation=rnet.Emulation.Chrome144,
+                emulation=rnet.Emulation.Chrome145,
                 emulation_os=rnet.EmulationOS.Windows,
             ),
             user_agent=self.user_agent,
@@ -326,7 +326,9 @@ class AccountCreator:
 
         sid_token = get_email_resp.json()["sid_token"]
 
-        account_username = account_email.split("@")[0]
+        # Guerrilla Mail API has an issue with the case of our username
+        # when getting email via the API, even though it seems fine on the site..
+        account_username = account_email.split("@")[0].lower()
 
         self.logger.debug(f"Sending request to set Guerrilla Mail email to: {account_username}.")
         set_email_resp = rnet_client.get(

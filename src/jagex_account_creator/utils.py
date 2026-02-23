@@ -1,4 +1,5 @@
 import random
+import secrets
 import string
 import threading
 from pathlib import Path
@@ -8,12 +9,20 @@ from loguru import logger
 from . import models
 
 
-def generate_username(length: int = 10) -> str:
-    """Generate a unique string based on length provided."""
+def generate_string(include_punctuation: bool, length: int = 16) -> str:
+    """Generate a unique string to use for accounts."""
     characters = string.ascii_letters + string.digits
-    username = "".join(random.choice(characters.lower()) for _ in range(length))
-    logger.debug(f"Returning generated username: {username} of length: {length}")
-    return username
+    if include_punctuation:
+        characters += string.punctuation
+    while True:
+        password = "".join(secrets.choice(characters) for _ in range(length))
+        if (
+            any(c.isupper() for c in password)
+            and any(c.islower() for c in password)
+            and any(c.isdigit() for c in password)
+            and (not include_punctuation or any(c in string.punctuation for c in password))
+        ):
+            return password
 
 
 def get_account_domain(domains: list[str]) -> str:
