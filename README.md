@@ -77,3 +77,8 @@ To achieve this functionality I would:
 # Contact
 Join the community Discord server for suggestions, help, etc: https://discord.gg/UHhK4kHuec
 My only discord is `gavinnn` (uid: `132269908628078592`)
+
+# Donate
+
+Don't feel obligated, but if you really want to, I appreciate that you find the project useful enough to want to donate.
+[![BuyMeACoffee](https://raw.githubusercontent.com/pachadotdev/buymeacoffee-badges/main/bmc-blue.svg)](https://www.buymeacoffee.com/gavinnn101)
