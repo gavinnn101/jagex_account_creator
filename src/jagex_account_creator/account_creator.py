@@ -17,7 +17,7 @@ from imap_tools import AND, MailBox
 from loguru import logger
 from rnet.blocking import Client
 
-from . import models
+from . import models, utils
 from .gproxy import GProxy
 
 _CHROME_EMULATION_MAP: dict[int, rnet.Emulation] = {}
@@ -181,7 +181,7 @@ class AccountCreator:
         co.set_timeouts(self.element_wait_timeout)
 
         if self.user_agent:
-            logger.debug(f"Setting browser user-agent: {self.user_agent}")
+            self.logger.debug(f"Setting browser user-agent: {self.user_agent}")
             co.set_user_agent(self.user_agent)
 
         if self.use_headless_browser:
@@ -298,7 +298,7 @@ class AccountCreator:
         timeout = time.monotonic() + timeout_seconds
 
         # Wait to get to the challenge page before we attempt to solve it.
-        logger.debug(f"Waiting for page title: {challenge_page_title}")
+        self.logger.debug(f"Waiting for page title: {challenge_page_title}")
         while challenge_page_title not in tab.title:
             time.sleep(0.1)
 
@@ -571,8 +571,7 @@ class AccountCreator:
     def register_account(self) -> models.AccountRegistrationResult:
         """Wrapper function to fully register a Jagex account."""
         start_time = time.monotonic()
-        run_number = random.randint(10_000, 65_535)
-        run_path = self._SCRIPT_CACHE_PATH / f"run_{run_number}"
+        run_path = self._SCRIPT_CACHE_PATH / utils.generate_string(include_punctuation=False)
         run_path.mkdir()
 
         gproxy = GProxy(upstream_proxy=self.proxy, allowed_hosts=["jagex", "cloudflare", "ipify"])
