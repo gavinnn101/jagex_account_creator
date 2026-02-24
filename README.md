@@ -35,9 +35,11 @@ Utilizes the Python DrissionPage library to automate a Chrome browser and sign u
 * Setup `uv` if not already - https://docs.astral.sh/uv/getting-started/installation/
 * Open `.\jagex_account_creator\config.toml` and edit the settings accordingly.
 * * Ensure the `user_agent` string at `chrome://version` in your browser matches the `user_agent` string in the config.
-* * Set either `use_imap` or `use_guerrilla_mail` to `true`.
-* * * Set `email.guerrilla_mail` or `email.imap` settings accordingly.
-* * `account.password`
+* * Set `mail_provider` to `xitroo`, `guerrilla_mail`, or `imap`.
+* * * Set `email.imap` settings accordingly if using `imap`.
+* * `[account] password`
+* * *  `""` will use a unique, secure string for each account.
+* * * Otherwise, set a default password that'll be used for all accounts.
 * * Enable `proxies` and setup list if being used.
 * Open a terminal @ `.\jagex_account_creator\`:
 * * Run `uv run main.py`.
