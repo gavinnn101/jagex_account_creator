@@ -14,11 +14,10 @@ cache_update_threshold = 0.3
 log_level = "INFO"
 
 [email]
-use_imap = false
-use_guerrilla_mail = true
+mail_provider = "xitroo"    # "imap", "guerrilla_mail", or "xitroo" are accepted values.
+use_proxy_for_temp_mail = false
 
 [email.guerrilla_mail]
-use_proxy = true
 domains = [
     "sharklasers.com",
     "guerrillamail.info",

@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from datetime import timedelta
+from enum import StrEnum
 
 import pyotp
 from pydantic import BaseModel, ConfigDict
@@ -66,3 +67,9 @@ class AccountRegistrationResult:
     jagex_account: JagexAccount
     transfer_stats: TransferStats
     duration: timedelta
+
+
+class MailProvider(StrEnum):
+    IMAP = "imap"
+    GUERRILLA_MAIL = "guerrilla_mail"
+    XITROO = "xitroo"

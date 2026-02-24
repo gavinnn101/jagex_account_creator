@@ -193,7 +193,7 @@ requires-dist = [
     { name = "platformdirs", specifier = ">=4.9.2" },
     { name = "pydantic", specifier = ">=2.12.5" },
     { name = "pyotp", specifier = ">=2.9.0" },
-    { name = "rnet", specifier = ">=3.0.0rc20" },
+    { name = "rnet", specifier = ">=3.0.0rc21" },
 ]
 
 [[package]]

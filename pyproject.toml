@@ -11,7 +11,7 @@ dependencies = [
     "platformdirs>=4.9.2",
     "pydantic>=2.12.5",
     "pyotp>=2.9.0",
-    "rnet>=3.0.0rc20",
+    "rnet>=3.0.0rc21",
 ]
 
 [build-system]

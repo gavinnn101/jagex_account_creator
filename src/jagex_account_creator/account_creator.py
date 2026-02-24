@@ -1,3 +1,4 @@
+import base64
 import random
 import re
 import shutil
@@ -8,14 +9,22 @@ from pathlib import Path
 
 import platformdirs
 import pyotp
+import rnet
 from DrissionPage import Chromium, ChromiumOptions
 from DrissionPage.common import Settings
 from DrissionPage.items import ChromiumElement, MixTab
 from imap_tools import AND, MailBox
 from loguru import logger
+from rnet.blocking import Client
 
 from . import models
 from .gproxy import GProxy
+
+_CHROME_EMULATION_MAP: dict[int, rnet.Emulation] = {}
+for name in dir(rnet.Emulation):
+    m = re.search(r"(\d+)", name)
+    if m:
+        _CHROME_EMULATION_MAP[int(m.group(1))] = getattr(rnet.Emulation, name)
 
 
 class ElementNotFoundError(Exception):
@@ -73,11 +82,12 @@ class AccountCreator:
         enable_dev_tools: bool,
         account_email: str,
         account_password: str,
+        mail_provider: models.MailProvider,
         proxy: models.Proxy | None = None,
         set_2fa: bool = False,
         use_headless_browser: bool = False,
         imap_details: models.IMAPDetails | None = None,
-        use_proxy_for_guerrilla_mail: bool = True,
+        use_proxy_for_temp_mail: bool = True,
     ) -> None:
         self.logger = logger.bind(module="AccountCreator")
         self.user_agent = user_agent
@@ -96,10 +106,47 @@ class AccountCreator:
         self.account_password = account_password
         self.set_2fa = set_2fa
 
-        self.imap_details = imap_details
-        self.use_proxy_for_guerrilla_mail = use_proxy_for_guerrilla_mail
+        self.mail_provider = mail_provider
+        if self.mail_provider == models.MailProvider.IMAP:
+            self.imap_details = imap_details
+        else:
+            self.use_proxy_for_temp_mail = use_proxy_for_temp_mail
+            self.rnet_client = self._setup_rnet_client()
 
         Settings.set_language("en")
+
+    def _setup_rnet_client(self) -> Client:
+        """Setup rnet client based on user agent."""
+        if "Windows" in self.user_agent:
+            emulation_os = rnet.EmulationOS.Windows
+        elif "Macintosh" in self.user_agent:
+            emulation_os = rnet.EmulationOS.MacOS
+        elif "Linux" in self.user_agent:
+            emulation_os = rnet.EmulationOS.Linux
+        else:
+            emulation_os = rnet.EmulationOS.Windows
+
+        match = re.search(r"Chrome/(\d+)", self.user_agent)
+        chrome_version = int(match.group(1)) if match else max(_CHROME_EMULATION_MAP)
+        closest = min(_CHROME_EMULATION_MAP, key=lambda v: abs(v - chrome_version))
+
+        proxies = None
+        if self.proxy and self.use_proxy_for_temp_mail:
+            if self.proxy.username and self.proxy.password:
+                proxy_url = f"http://{self.proxy.username}:{self.proxy.password}@{self.proxy.ip}:{self.proxy.port}"
+            else:
+                proxy_url = f"http://{self.proxy.ip}:{self.proxy.port}"
+            proxies = [rnet.Proxy.all(proxy_url)]
+
+        return Client(
+            emulation=rnet.EmulationOption(
+                emulation=_CHROME_EMULATION_MAP[closest],
+                emulation_os=emulation_os,
+            ),
+            user_agent=self.user_agent,
+            timeout=timedelta(seconds=self.element_wait_timeout),
+            proxies=proxies,
+        )
 
     def _get_dir_size(self, directory: Path) -> int:
         """Return the size of a directory"""
@@ -270,10 +317,10 @@ class AccountCreator:
         raise TimeoutError("Timed out trying to bypass CF challenge.")
 
     def _get_verification_code_imap(
-        self, imap_details: models.IMAPDetails, account_email: str, timeout_seconds: int = 30
+        self, imap_details: models.IMAPDetails, account_username: str, timeout_seconds: int = 30
     ) -> str:
         """Gets the verification code from catch all email via imap."""
-        email_query = AND(to=account_email, seen=False)
+        email_query = AND(to=account_username, seen=False)
         code_regex = r'data-testid="registration-started-verification-code"[^>]*>([A-Z0-9]+)<'
         with MailBox(imap_details.ip, imap_details.port).login(
             imap_details.email, imap_details.password
@@ -289,35 +336,12 @@ class AccountCreator:
         raise RegistrationError("Timed out waiting for registration code.")
 
     def _get_verification_code_guerrilla_mail(
-        self, account_email: str, timeout_seconds: int = 30
+        self, account_username: str, timeout_seconds: int = 30
     ) -> str:
         """Get the verification code for the jagex account from a temp Guerrilla Mail email."""
-        from datetime import timedelta
-
-        import rnet
-        from rnet.blocking import Client
-
-        cookie_jar = rnet.Jar()
-        rnet_client = Client(
-            emulation=rnet.EmulationOption(
-                emulation=rnet.Emulation.Chrome145,
-                emulation_os=rnet.EmulationOS.Windows,
-            ),
-            user_agent=self.user_agent,
-            cookie_provider=cookie_jar,
-            timeout=timedelta(seconds=self.element_wait_timeout),
-            proxies=[
-                rnet.Proxy.all(
-                    f"http://{self.proxy.username}:{self.proxy.password}@{self.proxy.ip}:{self.proxy.port}"
-                )
-            ]
-            if self.proxy and self.use_proxy_for_guerrilla_mail
-            else None,
-        )
-
         self.logger.debug("Getting account verification code via Guerrilla mail.")
 
-        get_email_resp = rnet_client.get(
+        get_email_resp = self.rnet_client.get(
             url=self._GUERRILLA_MAIL_API_URL,
             query={"f": "get_email_address", "lang": "en"},
         )
@@ -328,10 +352,10 @@ class AccountCreator:
 
         # Guerrilla Mail API has an issue with the case of our username
         # when getting email via the API, even though it seems fine on the site..
-        account_username = account_email.split("@")[0].lower()
+        account_username = account_username.lower()
 
         self.logger.debug(f"Sending request to set Guerrilla Mail email to: {account_username}.")
-        set_email_resp = rnet_client.get(
+        set_email_resp = self.rnet_client.get(
             url=self._GUERRILLA_MAIL_API_URL,
             query={
                 "f": "set_email_user",
@@ -349,7 +373,7 @@ class AccountCreator:
         timeout = time.monotonic() + timeout_seconds
         while time.monotonic() < timeout:
             self.logger.debug("Sending request to check our email.")
-            check_email_resp = rnet_client.get(
+            check_email_resp = self.rnet_client.get(
                 url=self._GUERRILLA_MAIL_API_URL,
                 query={"f": "check_email", "sid_token": sid_token, "seq": 0},
             )
@@ -360,6 +384,32 @@ class AccountCreator:
                 if email["mail_from"] != "no-reply@contact.jagex.com":
                     continue
                 mail_subject: str = email["mail_subject"]
+                return mail_subject.split()[0]
+            time.sleep(1)
+        raise RegistrationError("Timed out waiting for registration code.")
+
+    def _get_verification_code_xitroo(self, account_email: str, timeout_seconds: int = 30) -> str:
+        """Get account verification code via xitroo temp mail api."""
+        timeout = time.monotonic() + timeout_seconds
+        while time.monotonic() < timeout:
+            self.logger.debug("Sending request to check our email.")
+            check_email_resp = self.rnet_client.get(
+                url="https://api.xitroo.com/v1/mails",
+                query={
+                    "locale": "en",
+                    "mailAddress": account_email,
+                    "mailsPerPage": "25",
+                    "minTimestamp": "0",
+                    "maxTimestamp": str(time.time()),
+                },
+            )
+            self.logger.debug(f"Response: {check_email_resp}")
+            check_email_resp.raise_for_status()
+
+            for email in check_email_resp.json().get("mails", []):
+                if email["from"] != "Jagex <no-reply@contact.jagex.com>":
+                    continue
+                mail_subject: str = base64.b64decode(email["subject"]).decode("utf-8")
                 return mail_subject.split()[0]
             time.sleep(1)
         raise RegistrationError("Timed out waiting for registration code.")
@@ -457,10 +507,17 @@ class AccountCreator:
         self._click_element(tab, "@id:registration-start-form--continue-button")
         tab.wait.doc_loaded(raise_err=True)
 
-        if self.imap_details:
-            code = self._get_verification_code_imap(self.imap_details, self.account_username)
-        else:
-            code = self._get_verification_code_guerrilla_mail(self.account_username)
+        if self.mail_provider == models.MailProvider.IMAP:
+            code = self._get_verification_code_imap(
+                imap_details=self.imap_details, account_username=self.account_username
+            )
+        elif self.mail_provider == models.MailProvider.GUERRILLA_MAIL:
+            code = self._get_verification_code_guerrilla_mail(
+                account_username=self.account_username
+            )
+        elif self.mail_provider == models.MailProvider.XITROO:
+            code = self._get_verification_code_xitroo(account_email=self.account_email)
+
         self._click_and_type(tab, "@id:registration-verify-form-code-input", code)
         self._click_element(tab, "@id:registration-verify-form-continue-button")
         tab.wait.doc_loaded(raise_err=True)

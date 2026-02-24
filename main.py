@@ -50,13 +50,10 @@ def main():
 
     logger.info("Starting account creator.")
 
-    use_guerrilla_mail = config["email"]["use_guerrilla_mail"]
-    use_imap = config["email"]["use_imap"]
+    mail_provider = models.MailProvider(config["email"]["mail_provider"].lower())
+
     imap_details = None
-    if use_imap and use_guerrilla_mail:
-        logger.error("`use_imap` and `use_guerrilla_mail` can't both be True.")
-        return
-    elif use_imap:
+    if mail_provider == models.MailProvider.IMAP:
         imap_details = models.IMAPDetails(
             ip=config["email"]["imap"]["ip"],
             port=config["email"]["imap"]["port"],
@@ -64,10 +61,12 @@ def main():
             password=config["email"]["imap"]["password"],
         )
         domains = config["email"]["imap"]["domains"]
-    elif use_guerrilla_mail:
+    elif mail_provider == models.MailProvider.GUERRILLA_MAIL:
         domains = config["email"]["guerrilla_mail"]["domains"]
+    elif mail_provider == models.MailProvider.XITROO:
+        domains = ["xitroo.com"]
     else:
-        logger.error("Must use either imap or guerrilla mail.")
+        logger.error("Must use `imap`, `guerrilla_mail`, or `xitroo` for `[email] mail_provider`.")
         return
 
     if config["proxies"]["enabled"]:
@@ -108,10 +107,11 @@ def main():
                 proxy=proxy,
                 account_email=account_email,
                 account_password=account_password,
+                mail_provider=mail_provider,
                 set_2fa=config["account"]["set_2fa"],
                 use_headless_browser=config["browser"]["headless"],
                 imap_details=imap_details,
-                use_proxy_for_guerrilla_mail=config["email"]["guerrilla_mail"]["use_proxy"],
+                use_proxy_for_temp_mail=config["email"]["use_proxy_for_temp_mail"],
             )
             future = executor.submit(ac.register_account)
             future_to_email[future] = account_email
