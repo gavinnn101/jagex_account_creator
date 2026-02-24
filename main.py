@@ -3,7 +3,7 @@ import sys
 import threading
 import time
 import tomllib
-from concurrent.futures import Future, ThreadPoolExecutor, as_completed
+from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
@@ -42,6 +42,37 @@ def setup_logging(config: dict[str, Any]) -> None:
     )
 
 
+def handle_result(
+    future: Future,
+    email: str,
+    counters: dict,
+    counter_lock: threading.Lock,
+    accounts_to_create: int,
+) -> None:
+    """Callback function to handle processing a future (account creation) result."""
+    try:
+        result: models.AccountRegistrationResult = future.result()
+    except Exception as e:
+        logger.exception(f"Account creation for account: {email} failed: {e}")
+        with counter_lock:
+            counters["failed"] += 1
+    else:
+        total_data_used_mb = (
+            result.transfer_stats.bytes_sent + result.transfer_stats.bytes_received
+        ) / 1_048_576
+        logger.success(
+            f"Account created: {result.jagex_account}. Total data used: {total_data_used_mb:.2f}MB. Time taken: {result.duration}"
+        )
+        utils.save_account_to_file(
+            accounts_file_path=ACCOUNTS_FILE_PATH,
+            accounts_file_lock=ACCOUNTS_FILE_LOCK,
+            account=result.jagex_account,
+        )
+        with counter_lock:
+            counters["created"] += 1
+            logger.info(f"Created {counters['created']}/{accounts_to_create} accounts.")
+
+
 def main():
     with open(CONFIG_PATH, "rb") as f:
         config = tomllib.load(f)
@@ -75,13 +106,12 @@ def main():
         proxy_start_index = random.randint(0, len(proxies) - 1)
 
     accounts_to_create = config["account_creator"]["accounts_to_create"]
-    accounts_created = 0
-    account_creations_failed = 0
     logger.info(f"Creating {accounts_to_create} accounts.")
 
-    with ThreadPoolExecutor(max_workers=config["account_creator"]["threads"]) as executor:
-        future_to_email: dict[Future, str] = {}
+    account_creation_counters = {"created": 0, "failed": 0}
+    account_creation_counters_lock = threading.Lock()
 
+    with ThreadPoolExecutor(max_workers=config["account_creator"]["threads"]) as executor:
         for i in range(accounts_to_create):
             account_username = utils.generate_string(
                 include_punctuation=False, length=config["account"]["username_length"]
@@ -114,38 +144,23 @@ def main():
                 use_proxy_for_temp_mail=config["email"]["use_proxy_for_temp_mail"],
             )
             future = executor.submit(ac.register_account)
-            future_to_email[future] = account_email
-
+            future.add_done_callback(
+                lambda f, e=account_email: handle_result(
+                    f,
+                    e,
+                    account_creation_counters,
+                    account_creation_counters_lock,
+                    accounts_to_create,
+                )
+            )
             time.sleep(1)
 
-        for future in as_completed(future_to_email):
-            email = future_to_email[future]
-            try:
-                result: models.AccountRegistrationResult = future.result()
-            except Exception as e:
-                logger.exception(f"Account creation for account: {email} failed: {e}")
-                account_creations_failed += 1
-            else:
-                total_data_used_mb = (
-                    result.transfer_stats.bytes_sent + result.transfer_stats.bytes_received
-                ) / 1_048_576
-                logger.success(
-                    f"Account created: {result.jagex_account}. Total data used: {total_data_used_mb:.2f}MB. Time taken: {result.duration}"
-                )
-                utils.save_account_to_file(
-                    accounts_file_path=ACCOUNTS_FILE_PATH,
-                    accounts_file_lock=ACCOUNTS_FILE_LOCK,
-                    account=result.jagex_account,
-                )
-                accounts_created += 1
-                logger.info(f"Created {accounts_created}/{accounts_to_create} accounts.")
-
-        logger.info("Finished creating accounts.")
-        logger.info(
-            f"Total account creation attempts: {accounts_created + account_creations_failed}"
-        )
-        logger.info(f"Successful creations: {accounts_created}")
-        logger.info(f"Failed creations: {account_creations_failed}")
+    logger.info("Finished creating accounts.")
+    logger.info(
+        f"Total account creation attempts: {account_creation_counters['created'] + account_creation_counters['failed']}"
+    )
+    logger.info(f"Successful creations: {account_creation_counters['created']}")
+    logger.info(f"Failed creations: {account_creation_counters['failed']}")
 
 
 if __name__ == "__main__":
