@@ -25,12 +25,24 @@ def setup_logging(config: dict[str, Any]) -> None:
         "AccountCreator": config["account_creator"]["log_level"],
         "GProxy": config["gproxy"]["log_level"],
     }
+
+    def log_format(record: dict) -> str:
+        uid = record["extra"].get("uid", "-")
+        return (
+            "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | "
+            "<level>{level: <8}</level> | "
+            "<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> | "
+            f"<yellow>[{uid}]</yellow> "
+            "<level>{message}</level>\n{exception}"
+        )
+
     logger.remove()
 
     for module, level in log_levels.items():
         logger.add(
             sys.stderr,
             level=level,
+            format=log_format,
             filter=lambda record, name=module: record["extra"].get("module") == name,
         )
 
@@ -38,6 +50,7 @@ def setup_logging(config: dict[str, Any]) -> None:
     logger.add(
         sys.stderr,
         level="INFO",
+        format=log_format,
         filter=lambda record: record["extra"].get("module") not in configured_modules,
     )
 

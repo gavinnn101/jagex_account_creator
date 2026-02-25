@@ -89,7 +89,6 @@ class AccountCreator:
         imap_details: models.IMAPDetails | None = None,
         use_proxy_for_temp_mail: bool = True,
     ) -> None:
-        self.logger = logger.bind(module="AccountCreator")
         self.user_agent = user_agent
         self.enable_dev_tools = enable_dev_tools
         self.use_headless_browser = use_headless_browser
@@ -105,6 +104,8 @@ class AccountCreator:
         self.account_username = account_email.split("@")[0]
         self.account_password = account_password
         self.set_2fa = set_2fa
+
+        self.logger = logger.bind(module="AccountCreator", uid=self.account_username)
 
         self.mail_provider = mail_provider
         if self.mail_provider == models.MailProvider.IMAP:
@@ -398,7 +399,7 @@ class AccountCreator:
                 query={
                     "locale": "en",
                     "mailAddress": account_email,
-                    "mailsPerPage": "25",
+                    "mailsPerPage": "5",
                     "minTimestamp": "0",
                     "maxTimestamp": str(time.time()),
                 },
@@ -406,7 +407,9 @@ class AccountCreator:
             self.logger.debug(f"Response: {check_email_resp}")
             check_email_resp.raise_for_status()
 
-            for email in check_email_resp.json().get("mails", []):
+            emails = check_email_resp.json().get("mails", [])
+            self.logger.debug(f"Emails: {len(emails)}")
+            for email in emails:
                 if email["from"] != "Jagex <no-reply@contact.jagex.com>":
                     continue
                 mail_subject: str = base64.b64decode(email["subject"]).decode("utf-8")
@@ -574,7 +577,11 @@ class AccountCreator:
         run_path = self._SCRIPT_CACHE_PATH / utils.generate_string(include_punctuation=False)
         run_path.mkdir()
 
-        gproxy = GProxy(upstream_proxy=self.proxy, allowed_hosts=["jagex", "cloudflare", "ipify"])
+        gproxy = GProxy(
+            run_uid=self.account_username,
+            upstream_proxy=self.proxy,
+            allowed_hosts=["jagex", "cloudflare", "ipify"],
+        )
         gproxy.start()
 
         browser = self._get_new_browser(run_path, gproxy.ip, gproxy.port)

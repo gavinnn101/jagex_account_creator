@@ -89,6 +89,7 @@ class GProxy:
 
     def __init__(
         self,
+        run_uid: str,
         ip: str = "127.0.0.1",
         port: int | None = None,
         upstream_proxy: models.Proxy | None = None,
@@ -98,7 +99,7 @@ class GProxy:
         read_timeout: int = 30,
         max_threads: int = 100,
     ) -> None:
-        self.logger = logger.bind(module="GProxy")
+        self.logger = logger.bind(module="GProxy", uid=run_uid)
         self.ip = ip
         self.port = port if port is not None else self._find_free_port()
         self._address = (self.ip, self.port)
