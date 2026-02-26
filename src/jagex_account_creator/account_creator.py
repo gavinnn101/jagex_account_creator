@@ -328,6 +328,7 @@ class AccountCreator:
         self, imap_details: models.IMAPDetails, account_username: str, timeout_seconds: int = 30
     ) -> str:
         """Gets the verification code from catch all email via imap."""
+        self.logger.debug("Getting account verification code via imap.")
         email_query = AND(to=account_username, seen=False)
         code_regex = r'data-testid="registration-started-verification-code"[^>]*>([A-Z0-9]+)<'
         with MailBox(imap_details.ip, imap_details.port).login(
@@ -339,7 +340,9 @@ class AccountCreator:
                 for email in emails:
                     match = re.search(code_regex, email.html)
                     if match:
-                        return match.group(1)
+                        code = match.group(1)
+                        self.logger.debug(f"Returning verification code: {code}")
+                        return code
                 time.sleep(0.1)
         raise RegistrationError("Timed out waiting for registration code.")
 
@@ -392,12 +395,15 @@ class AccountCreator:
                 if email["mail_from"] != "no-reply@contact.jagex.com":
                     continue
                 mail_subject: str = email["mail_subject"]
-                return mail_subject.split()[0]
+                code = mail_subject.split()[0]
+                self.logger.debug(f"Returning verification code: {code}")
+                return code
             time.sleep(1)
         raise RegistrationError("Timed out waiting for registration code.")
 
     def _get_verification_code_xitroo(self, account_email: str, timeout_seconds: int = 60) -> str:
         """Get account verification code via xitroo temp mail api."""
+        self.logger.debug("Getting verification code via xitroo.")
         timeout = time.monotonic() + timeout_seconds
         while time.monotonic() < timeout:
             self.logger.debug("Sending request to check our email.")
@@ -421,7 +427,9 @@ class AccountCreator:
                 if email["from"] != "Jagex <no-reply@contact.jagex.com>":
                     continue
                 mail_subject: str = base64.b64decode(email["subject"]).decode("utf-8")
-                return mail_subject.split()[0]
+                code = mail_subject.split()[0]
+                self.logger.debug(f"Returning verification code: {code}")
+                return code
             time.sleep(1)
         raise RegistrationError("Timed out waiting for registration code.")
 
