@@ -179,6 +179,7 @@ class AccountCreator:
 
         self._setup_browser_cache(co, run_path=run_path)
 
+        self.logger.debug(f"Setting browser timeouts to: {self.element_wait_timeout}")
         co.set_timeouts(self.element_wait_timeout)
 
         if self.user_agent:
@@ -186,17 +187,23 @@ class AccountCreator:
             co.set_user_agent(self.user_agent)
 
         if self.use_headless_browser:
+            self.logger.debug("Setting --headless on chrome browser.")
             co.set_argument("--headless")
             if not self.user_agent:
                 self.logger.warning(
                     "Using headless without setting a user agent. This will likely get your session detected."
                 )
         elif self.enable_dev_tools:
+            self.logger.debug("Setting chrome argument to automatically open dev tools.")
             co.set_argument("--auto-open-devtools-for-tabs")
 
-        co.set_proxy(f"http://{ip}:{port}")
+        browser_proxy_string = f"http://{ip}:{port}"
+        self.logger.debug(f"Setting browser proxy: {browser_proxy_string}")
+        co.set_proxy(browser_proxy_string)
 
+        self.logger.debug("Creating browser object.")
         browser = Chromium(addr_or_opts=co)
+        self.logger.debug("Returning browser object.")
         return browser
 
     def _get_browser_ip(self, tab: MixTab) -> str:
