@@ -389,7 +389,7 @@ class AccountCreator:
             time.sleep(1)
         raise RegistrationError("Timed out waiting for registration code.")
 
-    def _get_verification_code_xitroo(self, account_email: str, timeout_seconds: int = 30) -> str:
+    def _get_verification_code_xitroo(self, account_email: str, timeout_seconds: int = 60) -> str:
         """Get account verification code via xitroo temp mail api."""
         timeout = time.monotonic() + timeout_seconds
         while time.monotonic() < timeout:
