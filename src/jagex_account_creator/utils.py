@@ -41,3 +41,4 @@ def save_account_to_file(
         logger.debug(f"Saving account: {account.email} to file: {accounts_file_path}")
         with open(accounts_file_path, "a") as f:
             f.write(account.model_dump_json() + "\n")
+        logger.debug(f"Account: {account.email} saved to file: {accounts_file_path}")
