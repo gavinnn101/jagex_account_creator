@@ -401,7 +401,8 @@ class AccountCreator:
                     "mailAddress": account_email,
                     "mailsPerPage": "5",
                     "minTimestamp": "0",
-                    "maxTimestamp": str(time.time()),
+                    # Add a bit of time just in case the code arrives after `time.time()`.
+                    "maxTimestamp": str(time.time() + timeout_seconds),
                 },
             )
             self.logger.debug(f"Response: {check_email_resp}")
