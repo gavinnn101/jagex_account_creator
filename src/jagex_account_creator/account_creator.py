@@ -563,6 +563,7 @@ class AccountCreator:
             self._bypass_challenge(tab)
 
             tab.wait.url_change(self._MANAGEMENT_URL, raise_err=True)
+            tab.wait.doc_loaded(raise_err=True)
 
             self._click_element(tab, "@data-testid:mfa-enable-totp-button")
             self._click_element(tab, "@id:authentication-setup-show-secret")
