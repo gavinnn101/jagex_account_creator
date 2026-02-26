@@ -500,7 +500,6 @@ class AccountCreator:
         self.logger.debug(f"Going to registration url: {self._REGISTRATION_URL}")
         if not tab.get(self._REGISTRATION_URL):
             raise RegistrationError(f"Failed to go to url: {self._REGISTRATION_URL}")
-        tab.wait.title_change(text="ipify", exclude=True, raise_err=True)
         tab.wait.doc_loaded()
 
         if any(msg in tab.html for msg in ["Sorry, you have been blocked", "Too many requests"]):
