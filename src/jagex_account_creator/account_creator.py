@@ -523,6 +523,7 @@ class AccountCreator:
         )
         self._click_element(tab, "@id:registration-start-accept-agreements")
         self._click_element(tab, "@id:registration-start-form--continue-button")
+        tab.wait.url_change(text="registration-start", exclude=True, raise_err=True)
         tab.wait.doc_loaded(raise_err=True)
 
         if self.mail_provider == models.MailProvider.IMAP:
@@ -540,18 +541,20 @@ class AccountCreator:
 
         self._click_and_type(tab, "@id:registration-verify-form-code-input", code)
         self._click_element(tab, "@id:registration-verify-form-continue-button")
+        tab.wait.url_change(text="registration-verify", exclude=True, raise_err=True)
         tab.wait.doc_loaded(raise_err=True)
 
         self._click_and_type(tab, "@id:displayName", self.account_username)
         self._click_element(tab, "@id:registration-account-name-form--continue-button")
+        tab.wait.url_change(text="account-name", exclude=True, raise_err=True)
         tab.wait.doc_loaded(raise_err=True)
 
         self._click_and_type(tab, "@id:password", self.account_password)
         self._click_and_type(tab, "@id:repassword", self.account_password)
         self._click_element(tab, "@id:registration-password-form--create-account-button")
-        tab.wait.doc_loaded(raise_err=True)
 
         tab.wait.title_change("Registration completed", raise_err=True)
+        tab.wait.doc_loaded(raise_err=True)
 
         if self.set_2fa:
             self.logger.debug("Going to management page")
