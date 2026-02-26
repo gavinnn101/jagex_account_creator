@@ -536,6 +536,8 @@ class AccountCreator:
             )
         elif self.mail_provider == models.MailProvider.XITROO:
             code = self._get_verification_code_xitroo(account_email=self.account_email)
+        else:
+            raise RegistrationError(f"Unsupported mail provider: {self.mail_provider}")
 
         self._click_and_type(tab, "@id:registration-verify-form-code-input", code)
         self._click_element(tab, "@id:registration-verify-form-continue-button")
