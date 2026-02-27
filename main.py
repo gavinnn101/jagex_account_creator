@@ -151,6 +151,7 @@ def main():
                 account_email=account_email,
                 account_password=account_password,
                 mail_provider=mail_provider,
+                run_id=f"account-{i + 1}",
                 set_2fa=config["account"]["set_2fa"],
                 use_headless_browser=config["browser"]["headless"],
                 imap_details=imap_details,

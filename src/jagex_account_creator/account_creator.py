@@ -83,12 +83,14 @@ class AccountCreator:
         account_email: str,
         account_password: str,
         mail_provider: models.MailProvider,
+        run_id: str = utils.generate_string(include_punctuation=False),
         proxy: models.Proxy | None = None,
         set_2fa: bool = False,
         use_headless_browser: bool = False,
         imap_details: models.IMAPDetails | None = None,
         use_proxy_for_temp_mail: bool = True,
     ) -> None:
+        self.run_id = run_id
         self.user_agent = user_agent
         self.enable_dev_tools = enable_dev_tools
         self.use_headless_browser = use_headless_browser
@@ -105,7 +107,7 @@ class AccountCreator:
         self.account_password = account_password
         self.set_2fa = set_2fa
 
-        self.logger = logger.bind(module="AccountCreator", uid=self.account_username)
+        self.logger = logger.bind(module="AccountCreator", uid=self.run_id)
 
         self.mail_provider = mail_provider
         if self.mail_provider == models.MailProvider.IMAP:
@@ -599,7 +601,7 @@ class AccountCreator:
         run_path.mkdir()
 
         gproxy = GProxy(
-            run_uid=self.account_username,
+            run_uid=self.run_id,
             upstream_proxy=self.proxy,
             allowed_hosts=["jagex", "cloudflare", "ipify"],
         )
