@@ -189,7 +189,6 @@ class AccountCreator:
             co.set_user_agent(self.user_agent)
 
         if not self.use_headless_browser:
-            co.set_argument("--start-maximized")
             if self.enable_dev_tools:
                 self.logger.debug("Setting chrome to automatically open dev tools.")
                 co.set_argument("--auto-open-devtools-for-tabs")
