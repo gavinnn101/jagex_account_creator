@@ -179,6 +179,12 @@ class AccountCreator:
         )
         co.set_argument("--accept-lang=en-US")
 
+        # Disable the pop-up that asks if we want to save
+        # the created account to the Google password manager.
+        # I don't think it blocks elements, but just in case.
+        co.set_pref("credentials_enable_service", False)
+        co.set_pref("profile.password_manager_enabled", False)
+
         self._setup_browser_cache(co, run_path=run_path)
 
         self.logger.debug(f"Setting browser timeouts to: {self.element_wait_timeout}")
