@@ -263,9 +263,10 @@ class AccountCreator:
     def _get_browser_ip(self, tab: MixTab) -> str:
         """Get the IP address that the browser is using."""
         url = "https://api64.ipify.org/?format=raw"
+        logger.debug(f"Going to url: {url}")
         if not tab.get(url):
             raise RegistrationError("Failed to get to ipify to verify our browser ip.")
-        ele = self._find_element(tab, "tag:pre")
+        ele = self._find_element(tab, identifier="tag:pre")
         return ele.text
 
     def _locate_cf_button(self, tab: MixTab) -> ChromiumElement | None:
