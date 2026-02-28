@@ -210,16 +210,6 @@ class AccountCreator:
         self.logger.debug("Returning browser object.")
         return browser
 
-    def _get_browser_ip(self, tab: MixTab) -> str:
-        """Get the IP address that the browser is using."""
-        url = "https://api64.ipify.org/?format=raw"
-        if not tab.get(url):
-            raise RegistrationError("Failed to get to ipify to verify our browser ip.")
-        ele = tab.ele("tag:pre")
-        if not ele:
-            raise RegistrationError("Failed to find the ip element in the ipify text.")
-        return ele.text
-
     def _find_element(self, tab: MixTab, identifier: str) -> ChromiumElement:
         """Find an element in the tab. Raises ElementNotFoundError."""
         self.logger.debug(f"Looking for element to click with identifier: {identifier}")
@@ -261,6 +251,14 @@ class AccountCreator:
         self.logger.debug(f"Clicking element and then typing: {text}")
         tab.actions.move_to(element).click().type(text, interval=typing_interval)
         return element
+
+    def _get_browser_ip(self, tab: MixTab) -> str:
+        """Get the IP address that the browser is using."""
+        url = "https://api64.ipify.org/?format=raw"
+        if not tab.get(url):
+            raise RegistrationError("Failed to get to ipify to verify our browser ip.")
+        ele = self._find_element(tab, "tag:pre")
+        return ele.text
 
     def _locate_cf_button(self, tab: MixTab) -> ChromiumElement | None:
         """Finds the CF challenge button in the tab."""
