@@ -57,7 +57,7 @@ def setup_logging(config: dict[str, Any]) -> None:
 
 def handle_result(
     future: Future,
-    email: str,
+    run_id: str,
     counters: dict,
     counter_lock: threading.Lock,
     accounts_to_create: int,
@@ -66,7 +66,7 @@ def handle_result(
     try:
         result: models.AccountRegistrationResult = future.result()
     except Exception as e:
-        logger.exception(f"Account creation for account: {email} failed: {e}")
+        logger.exception(f"Account creation for run: {run_id} failed: {e}")
         with counter_lock:
             counters["failed"] += 1
     else:
@@ -74,7 +74,7 @@ def handle_result(
             result.transfer_stats.bytes_sent + result.transfer_stats.bytes_received
         ) / 1_048_576
         logger.success(
-            f"Account created: {result.jagex_account}. Total data used: {total_data_used_mb:.2f}MB. Time taken: {result.duration}"
+            f"Run: {run_id} was successful. Account created: {result.jagex_account}. Total data used: {total_data_used_mb:.2f}MB. Time taken: {result.duration}"
         )
         utils.save_account_to_file(
             accounts_file_path=ACCOUNTS_FILE_PATH,
@@ -142,6 +142,8 @@ def main():
             else:
                 proxy = None
 
+            run_id = f"account-{i + 1}"
+
             ac = AccountCreator(
                 user_agent=config["browser"]["user_agent"],
                 element_wait_timeout=config["browser"]["element_wait_timeout"],
@@ -151,7 +153,7 @@ def main():
                 account_email=account_email,
                 account_password=account_password,
                 mail_provider=mail_provider,
-                run_id=f"account-{i + 1}",
+                run_id=run_id,
                 set_2fa=config["account"]["set_2fa"],
                 use_headless_browser=config["browser"]["headless"],
                 imap_details=imap_details,
@@ -159,7 +161,7 @@ def main():
             )
             future = executor.submit(ac.register_account)
             future.add_done_callback(
-                lambda f, e=account_email: handle_result(
+                lambda f, e=run_id: handle_result(
                     f,
                     e,
                     account_creation_counters,
