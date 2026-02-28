@@ -540,12 +540,10 @@ class AccountCreator:
 
         if self.mail_provider == models.MailProvider.IMAP:
             code = self._get_verification_code_imap(
-                imap_details=self.imap_details, account_username=self.account_username
+                imap_details=self.imap_details, email_username=self.account_username
             )
         elif self.mail_provider == models.MailProvider.GUERRILLA_MAIL:
-            code = self._get_verification_code_guerrilla_mail(
-                account_username=self.account_username
-            )
+            code = self._get_verification_code_guerrilla_mail(email_username=self.account_username)
         elif self.mail_provider == models.MailProvider.XITROO:
             code = self._get_verification_code_xitroo(account_email=self.account_email)
         else:
