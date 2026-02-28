@@ -188,16 +188,18 @@ class AccountCreator:
             self.logger.debug(f"Setting browser user-agent: {self.user_agent}")
             co.set_user_agent(self.user_agent)
 
-        if self.use_headless_browser:
+        if not self.use_headless_browser:
+            co.set_argument("--start-maximized")
+            if self.enable_dev_tools:
+                self.logger.debug("Setting chrome to automatically open dev tools.")
+                co.set_argument("--auto-open-devtools-for-tabs")
+        else:
             self.logger.debug("Setting --headless on chrome browser.")
             co.set_argument("--headless")
             if not self.user_agent:
                 self.logger.warning(
                     "Using headless without setting a user agent. This will likely get your session detected."
                 )
-        elif self.enable_dev_tools:
-            self.logger.debug("Setting chrome argument to automatically open dev tools.")
-            co.set_argument("--auto-open-devtools-for-tabs")
 
         browser_proxy_string = f"http://{ip}:{port}"
         self.logger.debug(f"Setting browser proxy: {browser_proxy_string}")
