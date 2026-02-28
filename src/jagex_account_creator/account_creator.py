@@ -423,9 +423,10 @@ class AccountCreator:
                 query={
                     "locale": "en",
                     "mailAddress": account_email,
-                    "mailsPerPage": "5",
-                    "minTimestamp": "0",
-                    # Add a bit of time just in case the code arrives after `time.time()`.
+                    "mailsPerPage": "1",
+                    # Increase range from current time
+                    # to make sure we get the email if it's delivered.
+                    "minTimestamp": str(time.time() - timeout_seconds),
                     "maxTimestamp": str(time.time() + timeout_seconds),
                 },
             )
