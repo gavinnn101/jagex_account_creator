@@ -336,11 +336,11 @@ class AccountCreator:
         raise TimeoutError("Timed out trying to bypass CF challenge.")
 
     def _get_verification_code_imap(
-        self, imap_details: models.IMAPDetails, account_username: str, timeout_seconds: int = 30
+        self, imap_details: models.IMAPDetails, email_username: str, timeout_seconds: int = 30
     ) -> str:
         """Gets the verification code from catch all email via imap."""
         self.logger.debug("Getting account verification code via imap.")
-        email_query = AND(to=account_username, seen=False)
+        email_query = AND(to=email_username, seen=False)
         code_regex = r'data-testid="registration-started-verification-code"[^>]*>([A-Z0-9]+)<'
         with MailBox(imap_details.ip, imap_details.port).login(
             imap_details.email, imap_details.password
@@ -358,7 +358,7 @@ class AccountCreator:
         raise RegistrationError("Timed out waiting for registration code.")
 
     def _get_verification_code_guerrilla_mail(
-        self, account_username: str, timeout_seconds: int = 30
+        self, email_username: str, timeout_seconds: int = 30
     ) -> str:
         """Get the verification code for the jagex account from a temp Guerrilla Mail email."""
         self.logger.debug("Getting account verification code via Guerrilla mail.")
@@ -374,14 +374,14 @@ class AccountCreator:
 
         # Guerrilla Mail API has an issue with the case of our username
         # when getting email via the API, even though it seems fine on the site..
-        account_username = account_username.lower()
+        email_username = email_username.lower()
 
-        self.logger.debug(f"Sending request to set Guerrilla Mail email to: {account_username}.")
+        self.logger.debug(f"Sending request to set Guerrilla Mail email to: {email_username}.")
         set_email_resp = self.rnet_client.get(
             url=self._GUERRILLA_MAIL_API_URL,
             query={
                 "f": "set_email_user",
-                "email_user": account_username,
+                "email_user": email_username,
                 "lang": "en",
                 "sid_token": sid_token,
             },
@@ -389,7 +389,7 @@ class AccountCreator:
         self.logger.debug(f"Response: {set_email_resp}")
         set_email_resp.raise_for_status()
 
-        if account_username not in set_email_resp.json()["email_addr"]:
+        if email_username not in set_email_resp.json()["email_addr"]:
             raise RegistrationError("Failed to set account email on Guerrilla Mail.")
 
         timeout = time.monotonic() + timeout_seconds
