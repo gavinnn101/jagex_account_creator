@@ -233,6 +233,9 @@ class AccountCreator:
                 f"Timed out waiting for element to be displayed: {identifier}"
             ) from e
 
+        logger.debug(f"Scrolling to element: {identifier}")
+        tab.scroll.to_see(element)
+
         self.logger.debug("Returning element")
         return element
 
