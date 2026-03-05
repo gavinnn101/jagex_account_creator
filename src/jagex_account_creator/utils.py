@@ -9,11 +9,34 @@ from loguru import logger
 from . import models
 
 
-def generate_string(include_punctuation: bool, length: int = 16) -> str:
-    """Generate a unique string to use for accounts."""
+def generate_string(
+    include_punctuation: bool,
+    excluded_characters: frozenset = frozenset(),
+    length: int = 16,
+) -> str:
+    """Generate a unique string.
+
+    Args:
+        include_punctuation: Include punctuation characters.
+        excluded_characters: Characters to exclude from the pool used for the string.
+        length: Length of the generated string.
+
+    Raises:
+        ValueError: If exclusions deplete a required character category.
+    """
     characters = string.ascii_letters + string.digits
     if include_punctuation:
         characters += string.punctuation
+    if excluded_characters:
+        characters = "".join(c for c in characters if c not in excluded_characters)
+
+    required = [string.ascii_uppercase, string.ascii_lowercase, string.digits]
+    if include_punctuation:
+        required.append(string.punctuation)
+    for category in required:
+        if not any(c in characters for c in category):
+            raise ValueError(f"All characters excluded from a required category: {category!r}")
+
     while True:
         password = "".join(secrets.choice(characters) for _ in range(length))
         if (

@@ -132,7 +132,11 @@ def main():
             account_password = config["account"]["password"]
             if not account_password:
                 account_password = utils.generate_string(
-                    include_punctuation=True, length=config["account"]["random_password_length"]
+                    include_punctuation=True,
+                    excluded_characters=frozenset(
+                        [":"],
+                    ),
+                    length=config["account"]["random_password_length"],
                 )
             account_domain = utils.get_account_domain(domains=domains)
             account_email = f"{account_username}@{account_domain}"
