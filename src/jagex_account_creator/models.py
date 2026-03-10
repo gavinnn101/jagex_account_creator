@@ -24,6 +24,15 @@ class IMAPDetails(BaseModel):
     password: str
 
 
+class Email(BaseModel):
+    username: str
+    domain: str
+
+    @property
+    def address(self) -> str:
+        return f"{self.username}@{self.domain}"
+
+
 class Birthday(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -43,7 +52,8 @@ class TwoFactorAuth(BaseModel):
 
 
 class JagexAccount(BaseModel):
-    email: str
+    email: Email
+    username: str
     password: str
     birthday: Birthday
     real_ip: str

@@ -16,7 +16,7 @@ def main():
     with open(ACCOUNTS_FILE_PATH) as in_file, open(CONVERTED_ACCOUNTS_FILE_PATH, "w") as out_file:
         for line in in_file:
             account = JagexAccount.model_validate_json(line.strip())
-            acc_data = f"{account.email}:{account.password}"
+            acc_data = f"{account.email.address}:{account.password}"
             if account.tfa:
                 acc_data += f":{account.tfa.setup_key}"
             out_file.write(f"{acc_data}\n")

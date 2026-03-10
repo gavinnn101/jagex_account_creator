@@ -80,7 +80,7 @@ class AccountCreator:
         element_wait_timeout: int,
         cache_update_threshold: float,
         enable_dev_tools: bool,
-        account_email: str,
+        account_email_domain: str,
         account_password: str,
         mail_provider: models.MailProvider,
         run_id: str = utils.generate_string(include_punctuation=False),
@@ -102,8 +102,7 @@ class AccountCreator:
         self.cache_update_threshold = cache_update_threshold
 
         self.proxy = proxy
-        self.account_email = account_email
-        self.account_username = account_email.split("@")[0]
+        self.account_email_domain = account_email_domain
         self.account_password = account_password
         self.set_2fa = set_2fa
 
@@ -445,6 +444,38 @@ class AccountCreator:
             time.sleep(1)
         raise RegistrationError("Timed out waiting for registration code.")
 
+    def _submit_account_username(self, tab: MixTab, timeout_seconds: int = 30) -> str:
+        """Wrapper function to loop the username submission.
+
+        This is required in case we get an error like "name not allowed", etc.
+        Returns the account username used.
+        """
+        timeout = time.monotonic() + timeout_seconds
+        while time.monotonic() < timeout:
+            try:
+                display_name_field = self._find_element(tab, "@id:displayName")
+            except ElementNotFoundError:
+                self.logger.warning("Couldn't find display name field.")
+                continue
+            else:
+                self.logger.debug("Clearing username field.")
+                display_name_field.clear()
+
+            account_username = utils.generate_string(include_punctuation=False, length=12)
+            self.logger.debug(f"Attempting to submit account username: {account_username}")
+
+            tab.actions.move_to(display_name_field).click().type(account_username, interval=0.01)
+
+            self._click_element(tab, "@id:registration-account-name-form--continue-button")
+            tab.wait.url_change(text="account-name", exclude=True, timeout=5)
+
+            if "account-name" not in tab.url:
+                self.logger.info(f"Returning accepted username: {account_username}")
+                return account_username
+            self.logger.debug("Retrying username submission.")
+
+        raise RegistrationError("Timed out submitting account username.")
+
     def _update_cache(self, run_cache_path: Path) -> None:
         """Update primary cache if run cache is significantly different."""
         with self._BROWSER_CACHE_FOLDER_LOCK:
@@ -497,16 +528,15 @@ class AccountCreator:
         browser_ip = self._get_browser_ip(tab)
         self.logger.info(f"Browser IP: {browser_ip}")
 
-        jagex_account = models.JagexAccount(
-            email=self.account_email,
-            password=self.account_password,
-            birthday=models.Birthday(
-                day=random.randint(1, 25),
-                month=random.randint(1, 12),
-                year=random.randint(1979, 2010),
-            ),
-            real_ip=browser_ip,
-            proxy=self.proxy,
+        account_birthday = models.Birthday(
+            day=random.randint(1, 25),
+            month=random.randint(1, 12),
+            year=random.randint(1979, 2010),
+        )
+
+        account_email = models.Email(
+            username=utils.generate_string(include_punctuation=False, length=12),
+            domain=self.account_email_domain,
         )
 
         self.logger.debug(f"Going to registration url: {self._REGISTRATION_URL}")
@@ -517,21 +547,21 @@ class AccountCreator:
         if any(msg in tab.html for msg in ["Sorry, you have been blocked", "Too many requests"]):
             raise RegistrationError("IP is blocked by CF. Exiting.")
 
-        self._click_and_type(tab, "@id:email", jagex_account.email)
+        self._click_and_type(tab, "@id:email", account_email.address)
         self._click_and_type(
             tab,
             "@id:registration-start-form--field-day",
-            str(jagex_account.birthday.day),
+            str(account_birthday.day),
         )
         self._click_and_type(
             tab,
             "@id:registration-start-form--field-month",
-            str(jagex_account.birthday.month),
+            str(account_birthday.month),
         )
         self._click_and_type(
             tab,
             "@id:registration-start-form--field-year",
-            str(jagex_account.birthday.year),
+            str(account_birthday.year),
         )
         self._click_element(tab, "@id:registration-start-accept-agreements")
         self._click_element(tab, "@id:registration-start-form--continue-button")
@@ -540,12 +570,12 @@ class AccountCreator:
 
         if self.mail_provider == models.MailProvider.IMAP:
             code = self._get_verification_code_imap(
-                imap_details=self.imap_details, email_username=self.account_username
+                imap_details=self.imap_details, email_username=account_email.username
             )
         elif self.mail_provider == models.MailProvider.GUERRILLA_MAIL:
-            code = self._get_verification_code_guerrilla_mail(email_username=self.account_username)
+            code = self._get_verification_code_guerrilla_mail(email_username=account_email.username)
         elif self.mail_provider == models.MailProvider.XITROO:
-            code = self._get_verification_code_xitroo(account_email=self.account_email)
+            code = self._get_verification_code_xitroo(account_email=account_email.address)
         else:
             raise RegistrationError(f"Unsupported mail provider: {self.mail_provider}")
 
@@ -554,10 +584,7 @@ class AccountCreator:
         tab.wait.url_change(text="registration-verify", exclude=True, raise_err=True)
         tab.wait.doc_loaded(raise_err=True)
 
-        self._click_and_type(tab, "@id:displayName", self.account_username)
-        self._click_element(tab, "@id:registration-account-name-form--continue-button")
-        tab.wait.url_change(text="account-name", exclude=True, raise_err=True)
-        tab.wait.doc_loaded(raise_err=True)
+        account_username = self._submit_account_username(tab)
 
         self._click_and_type(tab, "@id:password", self.account_password)
         self._click_and_type(tab, "@id:repassword", self.account_password)
@@ -565,6 +592,15 @@ class AccountCreator:
 
         tab.wait.title_change("Registration completed", raise_err=True)
         tab.wait.doc_loaded(raise_err=True)
+
+        jagex_account = models.JagexAccount(
+            email=account_email,
+            username=account_username,
+            password=self.account_password,
+            birthday=account_birthday,
+            real_ip=browser_ip,
+            proxy=self.proxy,
+        )
 
         if self.set_2fa:
             self.logger.debug("Going to management page")
@@ -606,6 +642,7 @@ class AccountCreator:
         """Wrapper function to fully register a Jagex account."""
         start_time = time.monotonic()
         run_path = self._SCRIPT_CACHE_PATH / utils.generate_string(include_punctuation=False)
+        logger.debug(f"Using run path: {run_path}")
         run_path.mkdir()
 
         gproxy = GProxy(

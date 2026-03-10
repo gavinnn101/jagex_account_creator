@@ -126,9 +126,6 @@ def main():
 
     with ThreadPoolExecutor(max_workers=config["account_creator"]["threads"]) as executor:
         for i in range(accounts_to_create):
-            account_username = utils.generate_string(
-                include_punctuation=False, length=config["account"]["username_length"]
-            )
             account_password = config["account"]["password"]
             if not account_password:
                 account_password = utils.generate_string(
@@ -138,8 +135,6 @@ def main():
                     ),
                     length=config["account"]["random_password_length"],
                 )
-            account_domain = utils.get_account_domain(domains=domains)
-            account_email = f"{account_username}@{account_domain}"
 
             if config["proxies"]["enabled"] and proxies:
                 proxy = proxies[(proxy_start_index + i) % len(proxies)]
@@ -154,7 +149,7 @@ def main():
                 cache_update_threshold=config["browser"]["cache_update_threshold"],
                 enable_dev_tools=config["browser"]["enable_dev_tools"],
                 proxy=proxy,
-                account_email=account_email,
+                account_email_domain=utils.get_account_domain(domains=domains),
                 account_password=account_password,
                 mail_provider=mail_provider,
                 run_id=run_id,
