@@ -113,11 +113,9 @@ class AccountCreator:
                 timeout_seconds=self.element_wait_timeout,
             )
             if self.proxy:
-                if self.proxy.username and self.proxy.password:
-                    proxy_url = f"http://{self.proxy.username}:{self.proxy.password}@{self.proxy.ip}:{self.proxy.port}"
-                else:
-                    proxy_url = f"http://{self.proxy.ip}:{self.proxy.port}"
-                self.rnet_proxy = rnet.Proxy.all(proxy_url)
+                self.rnet_proxy = self.proxy.to_rnet()
+            else:
+                self.rnet_proxy = None
 
         Settings.set_language("en")
 

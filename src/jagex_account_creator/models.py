@@ -1,8 +1,10 @@
 from dataclasses import dataclass
 from datetime import timedelta
 from enum import StrEnum
+from functools import lru_cache
 
 import pyotp
+import rnet
 from pydantic import BaseModel, ConfigDict
 
 
@@ -13,6 +15,18 @@ class Proxy(BaseModel):
     port: int
     username: str | None = None
     password: str | None = None
+
+    def to_url(self) -> str:
+        """Convert this proxy object to a url."""
+        if self.username and self.password:
+            proxy_url = f"http://{self.username}:{self.password}@{self.ip}:{self.port}"
+        else:
+            proxy_url = f"http://{self.ip}:{self.port}"
+        return proxy_url
+
+    def to_rnet(self) -> rnet.Proxy:
+        """Convert this Proxy object to an rnet proxy object."""
+        return rnet.Proxy.all(self.to_url())
 
 
 class IMAPDetails(BaseModel):
