@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from loguru import logger
+from rnet.blocking import Client
 
 from jagex_account_creator import models, utils
 from jagex_account_creator.account_creator import AccountCreator
@@ -86,6 +87,21 @@ def handle_result(
             logger.info(f"Created {counters['created']}/{accounts_to_create} accounts.")
 
 
+def test_proxy(rnet_client: Client, proxy: models.Proxy) -> bool:
+    """Check if we can authenticate and get the real ip of the proxy."""
+    try:
+        resp = rnet_client.get(
+            url="https://api.ipify.org/",
+            query={"format": "json"},
+            proxy=proxy.to_rnet(),
+        )
+        resp.raise_for_status()
+    except Exception:
+        logger.exception(f"Proxy validation failed for: {proxy}")
+        return False
+    return True
+
+
 def main():
     with open(CONFIG_PATH, "rb") as f:
         config = tomllib.load(f)
@@ -146,6 +162,10 @@ def main():
 
             if config["proxies"]["enabled"] and proxies:
                 proxy = proxies[(proxy_start_index + i) % len(proxies)]
+                if not test_proxy(rnet_client=rnet_client, proxy=proxy):
+                    # TODO: It'd probably be better if we retried with a new proxy.
+                    # Currently this will exit the attempt early but not retry.
+                    continue
             else:
                 proxy = None
 
