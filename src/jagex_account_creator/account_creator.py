@@ -62,8 +62,6 @@ class AccountCreator:
     _REGISTRATION_URL = "https://account.jagex.com/en-GB/login/registration-start"
     _MANAGEMENT_URL = "https://account.jagex.com/en-GB/manage/profile"
 
-    _GUERRILLA_MAIL_API_URL = "https://api.guerrillamail.com/ajax.php"
-
     _SCRIPT_CACHE_PATH = platformdirs.user_cache_path(
         appname="jagex_account_creator", ensure_exists=True
     )
@@ -329,10 +327,11 @@ class AccountCreator:
         self, email_username: str, timeout_seconds: int = 30
     ) -> str:
         """Get the verification code for the jagex account from a temp Guerrilla Mail email."""
+        guerrilla_mail_api_url = "https://api.guerrillamail.com/ajax.php"
         self.logger.debug("Getting account verification code via Guerrilla mail.")
 
         get_email_resp = self.rnet_client.get(
-            url=self._GUERRILLA_MAIL_API_URL,
+            url=guerrilla_mail_api_url,
             query={"f": "get_email_address", "lang": "en"},
             proxy=self.rnet_proxy,
         )
@@ -347,7 +346,7 @@ class AccountCreator:
 
         self.logger.debug(f"Sending request to set Guerrilla Mail email to: {email_username}.")
         set_email_resp = self.rnet_client.get(
-            url=self._GUERRILLA_MAIL_API_URL,
+            url=guerrilla_mail_api_url,
             query={
                 "f": "set_email_user",
                 "email_user": email_username,
@@ -366,7 +365,7 @@ class AccountCreator:
         while time.monotonic() < timeout:
             self.logger.debug("Sending request to check our email.")
             check_email_resp = self.rnet_client.get(
-                url=self._GUERRILLA_MAIL_API_URL,
+                url=guerrilla_mail_api_url,
                 query={"f": "check_email", "sid_token": sid_token, "seq": 0},
                 proxy=self.rnet_proxy,
             )
