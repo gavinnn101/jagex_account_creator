@@ -124,6 +124,14 @@ def main():
     account_creation_counters = {"created": 0, "failed": 0}
     account_creation_counters_lock = threading.Lock()
 
+    timeout_seconds = config["browser"]["element_wait_timeout"]
+    user_agent = config["browser"]["user_agent"]
+
+    rnet_client = utils.setup_rnet_client(
+        user_agent=user_agent,
+        timeout_seconds=timeout_seconds,
+    )
+
     with ThreadPoolExecutor(max_workers=config["account_creator"]["threads"]) as executor:
         for i in range(accounts_to_create):
             account_password = config["account"]["password"]
@@ -144,8 +152,9 @@ def main():
             run_id = f"account-{i + 1}"
 
             ac = AccountCreator(
-                user_agent=config["browser"]["user_agent"],
-                element_wait_timeout=config["browser"]["element_wait_timeout"],
+                user_agent=user_agent,
+                rnet_client=rnet_client,
+                element_wait_timeout=timeout_seconds,
                 cache_update_threshold=config["browser"]["cache_update_threshold"],
                 enable_dev_tools=config["browser"]["enable_dev_tools"],
                 proxy=proxy,

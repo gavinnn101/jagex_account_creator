@@ -20,12 +20,6 @@ from rnet.blocking import Client
 from . import models, utils
 from .gproxy import GProxy
 
-_CHROME_EMULATION_MAP: dict[int, rnet.Emulation] = {}
-for name in dir(rnet.Emulation):
-    m = re.search(r"(\d+)", name)
-    if m:
-        _CHROME_EMULATION_MAP[int(m.group(1))] = getattr(rnet.Emulation, name)
-
 
 class ElementNotFoundError(Exception):
     """Raised when a required element cannot be found."""
@@ -76,6 +70,7 @@ class AccountCreator:
 
     def __init__(
         self,
+        rnet_client: Client,
         user_agent: str,
         element_wait_timeout: int,
         cache_update_threshold: float,
@@ -83,14 +78,16 @@ class AccountCreator:
         account_email_domain: str,
         account_password: str,
         mail_provider: models.MailProvider,
-        run_id: str = utils.generate_string(include_punctuation=False),
+        run_id: str | None = None,
         proxy: models.Proxy | None = None,
         set_2fa: bool = False,
         use_headless_browser: bool = False,
         imap_details: models.IMAPDetails | None = None,
         use_proxy_for_temp_mail: bool = True,
     ) -> None:
-        self.run_id = run_id
+        self.run_id = run_id or utils.generate_string(include_punctuation=False)
+        self.logger = logger.bind(module="AccountCreator", uid=self.run_id)
+
         self.user_agent = user_agent
         self.enable_dev_tools = enable_dev_tools
         self.use_headless_browser = use_headless_browser
@@ -106,49 +103,23 @@ class AccountCreator:
         self.account_password = account_password
         self.set_2fa = set_2fa
 
-        self.logger = logger.bind(module="AccountCreator", uid=self.run_id)
-
         self.mail_provider = mail_provider
         if self.mail_provider == models.MailProvider.IMAP:
             self.imap_details = imap_details
         else:
             self.use_proxy_for_temp_mail = use_proxy_for_temp_mail
-            self.rnet_client = self._setup_rnet_client()
+            self.rnet_client = rnet_client or utils.setup_rnet_client(
+                user_agent=self.user_agent,
+                timeout_seconds=self.element_wait_timeout,
+            )
+            if self.proxy:
+                if self.proxy.username and self.proxy.password:
+                    proxy_url = f"http://{self.proxy.username}:{self.proxy.password}@{self.proxy.ip}:{self.proxy.port}"
+                else:
+                    proxy_url = f"http://{self.proxy.ip}:{self.proxy.port}"
+                self.rnet_proxy = rnet.Proxy.all(proxy_url)
 
         Settings.set_language("en")
-
-    def _setup_rnet_client(self) -> Client:
-        """Setup rnet client based on user agent."""
-        if "Windows" in self.user_agent:
-            emulation_os = rnet.EmulationOS.Windows
-        elif "Macintosh" in self.user_agent:
-            emulation_os = rnet.EmulationOS.MacOS
-        elif "Linux" in self.user_agent:
-            emulation_os = rnet.EmulationOS.Linux
-        else:
-            emulation_os = rnet.EmulationOS.Windows
-
-        match = re.search(r"Chrome/(\d+)", self.user_agent)
-        chrome_version = int(match.group(1)) if match else max(_CHROME_EMULATION_MAP)
-        closest = min(_CHROME_EMULATION_MAP, key=lambda v: abs(v - chrome_version))
-
-        proxies = None
-        if self.proxy and self.use_proxy_for_temp_mail:
-            if self.proxy.username and self.proxy.password:
-                proxy_url = f"http://{self.proxy.username}:{self.proxy.password}@{self.proxy.ip}:{self.proxy.port}"
-            else:
-                proxy_url = f"http://{self.proxy.ip}:{self.proxy.port}"
-            proxies = [rnet.Proxy.all(proxy_url)]
-
-        return Client(
-            emulation=rnet.EmulationOption(
-                emulation=_CHROME_EMULATION_MAP[closest],
-                emulation_os=emulation_os,
-            ),
-            user_agent=self.user_agent,
-            timeout=timedelta(seconds=self.element_wait_timeout),
-            proxies=proxies,
-        )
 
     def _get_dir_size(self, directory: Path) -> int:
         """Return the size of a directory"""
@@ -365,6 +336,7 @@ class AccountCreator:
         get_email_resp = self.rnet_client.get(
             url=self._GUERRILLA_MAIL_API_URL,
             query={"f": "get_email_address", "lang": "en"},
+            proxy=self.rnet_proxy,
         )
         self.logger.debug(f"Response: {get_email_resp}")
         get_email_resp.raise_for_status()
@@ -384,6 +356,7 @@ class AccountCreator:
                 "lang": "en",
                 "sid_token": sid_token,
             },
+            proxy=self.rnet_proxy,
         )
         self.logger.debug(f"Response: {set_email_resp}")
         set_email_resp.raise_for_status()
@@ -397,6 +370,7 @@ class AccountCreator:
             check_email_resp = self.rnet_client.get(
                 url=self._GUERRILLA_MAIL_API_URL,
                 query={"f": "check_email", "sid_token": sid_token, "seq": 0},
+                proxy=self.rnet_proxy,
             )
             self.logger.debug(f"Response: {check_email_resp}")
             check_email_resp.raise_for_status()
@@ -428,6 +402,7 @@ class AccountCreator:
                     "minTimestamp": str(time.time() - timeout_seconds),
                     "maxTimestamp": str(time.time() + timeout_seconds),
                 },
+                proxy=self.rnet_proxy,
             )
             self.logger.debug(f"Response: {check_email_resp}")
             check_email_resp.raise_for_status()

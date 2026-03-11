@@ -1,10 +1,14 @@
 import random
+import re
 import secrets
 import string
 import threading
+from datetime import timedelta
 from pathlib import Path
 
+import rnet
 from loguru import logger
+from rnet.blocking import Client
 
 from . import models
 
@@ -65,3 +69,35 @@ def save_account_to_file(
         with open(accounts_file_path, "a") as f:
             f.write(account.model_dump_json() + "\n")
         logger.debug(f"Account: {account.email} saved to file: {accounts_file_path}")
+
+
+_CHROME_EMULATION_MAP: dict[int, rnet.Emulation] = {}
+for name in dir(rnet.Emulation):
+    m = re.search(r"(\d+)", name)
+    if m:
+        _CHROME_EMULATION_MAP[int(m.group(1))] = getattr(rnet.Emulation, name)
+
+
+def setup_rnet_client(user_agent: str, timeout_seconds: int) -> Client:
+    """Setup an rnet client."""
+    if "Windows" in user_agent:
+        emulation_os = rnet.EmulationOS.Windows
+    elif "Macintosh" in user_agent:
+        emulation_os = rnet.EmulationOS.MacOS
+    elif "Linux" in user_agent:
+        emulation_os = rnet.EmulationOS.Linux
+    else:
+        emulation_os = rnet.EmulationOS.Windows
+
+    match = re.search(r"Chrome/(\d+)", user_agent)
+    chrome_version = int(match.group(1)) if match else max(_CHROME_EMULATION_MAP)
+    closest = min(_CHROME_EMULATION_MAP, key=lambda v: abs(v - chrome_version))
+
+    return Client(
+        emulation=rnet.EmulationOption(
+            emulation=_CHROME_EMULATION_MAP[closest],
+            emulation_os=emulation_os,
+        ),
+        user_agent=user_agent,
+        timeout=timedelta(seconds=timeout_seconds),
+    )
