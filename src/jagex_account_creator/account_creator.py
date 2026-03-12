@@ -144,6 +144,10 @@ class AccountCreator:
             "--disable-features",
             "PrivacySandboxSettings4,OptimizationGuideModelDownloading,OptimizationHintsFetching,OptimizationTargetPrediction,OptimizationHints",
         )
+        co.set_argument("--disable-background-networking")
+        co.set_argument("--disable-component-update")
+        co.set_argument("--disable-background-downloads")
+        co.set_argument("--disable-crash-reporter")
         co.set_argument("--accept-lang=en-US")
 
         # Disable the pop-up that asks if we want to save
