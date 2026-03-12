@@ -204,10 +204,11 @@ class AccountCreator:
                 f"Timed out waiting for element to be displayed: {identifier}"
             ) from e
 
-        logger.debug(f"Scrolling to element: {identifier}")
+        self.logger.debug(f"Scrolling to element: {identifier}")
         tab.scroll.to_see(element)
+        self.logger.debug(f"Element: {identifier} should now be visible.")
 
-        self.logger.debug("Returning element")
+        self.logger.debug(f"Returning element with identifier: {identifier}")
         return element
 
     def _click_element(self, tab: MixTab, identifier: str) -> ChromiumElement:
@@ -229,7 +230,7 @@ class AccountCreator:
     def _get_browser_ip(self, tab: MixTab) -> str:
         """Get the IP address that the browser is using."""
         url = "https://api64.ipify.org/?format=raw"
-        logger.debug(f"Going to url: {url}")
+        self.logger.debug(f"Going to url: {url}")
         if not tab.get(url):
             raise RegistrationError("Failed to get to ipify to verify our browser ip.")
         ele = self._find_element(tab, identifier="tag:pre")
@@ -614,7 +615,7 @@ class AccountCreator:
         """Wrapper function to fully register a Jagex account."""
         start_time = time.monotonic()
         run_path = self._SCRIPT_CACHE_PATH / utils.generate_string(include_punctuation=False)
-        logger.debug(f"Using run path: {run_path}")
+        self.logger.debug(f"Using run path: {run_path}")
         run_path.mkdir()
 
         gproxy = GProxy(
