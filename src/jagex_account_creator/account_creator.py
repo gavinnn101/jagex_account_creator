@@ -181,28 +181,18 @@ class AccountCreator:
         self.logger.debug("Returning browser object.")
         return browser
 
-    def _find_element(self, tab: MixTab, identifier: str) -> ChromiumElement:
-        """Find an element in the tab. Raises ElementNotFoundError."""
-        self.logger.debug(f"Looking for element to click with identifier: {identifier}")
+    def _find_element(self, tab: MixTab, identifier: setattr) -> ChromiumElement:
+        """Find a visible element in the tab. Raises ElementNotFoundError."""
+        self.logger.debug(f"Waiting for element to be displayed: {identifier}")
 
-        self.logger.debug("Waiting for element to be loaded")
-        if not tab.wait.eles_loaded(identifier):
-            raise ElementNotFoundError(
-                f"Couldn't find loaded element with identifier: {identifier}"
-            )
+        if not tab.wait.ele_displayed(identifier):
+            raise ElementNotFoundError(f"Element not found or not displayed: {identifier}")
 
-        self.logger.debug("Getting element")
         element = tab.ele(identifier)
         if not element:
-            raise ElementNotFoundError(f"Failed to get element: {identifier}")
-
-        self.logger.debug("Waiting for element to be displayed")
-        try:
-            element.wait.displayed()
-        except TimeoutError as e:
             raise ElementNotFoundError(
-                f"Timed out waiting for element to be displayed: {identifier}"
-            ) from e
+                f"Failed to get element after display confirmed: {identifier}"
+            )
 
         self.logger.debug(f"Scrolling to element: {identifier}")
         tab.scroll.to_see(element)
