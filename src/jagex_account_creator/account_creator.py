@@ -141,7 +141,8 @@ class AccountCreator:
 
         # Disable chrome optimization features to save on bandwidth
         co.set_argument(
-            "--disable-features=OptimizationGuideModelDownloading,OptimizationHintsFetching,OptimizationTargetPrediction,OptimizationHints"
+            "--disable-features",
+            "PrivacySandboxSettings4,OptimizationGuideModelDownloading,OptimizationHintsFetching,OptimizationTargetPrediction,OptimizationHints",
         )
         co.set_argument("--accept-lang=en-US")
 
